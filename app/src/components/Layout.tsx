@@ -8,31 +8,25 @@ import { XIcon } from '@primer/octicons-react';
 import { useRouter } from 'next/router';
 import { FC, PropsWithChildren } from 'react';
 import { basePath } from '../../generated/basePath';
-import data from '../data/data_brainglobe.json';
 
 export const Layout: FC<PropsWithChildren> = ({ children }) => {
   const router = useRouter();
   const [showBanner, setShowBanner] = useLocalStorage('show-banner', false);
   const isSSR = useIsSSR();
+  const orgName = 'SWC/GCNU Neuroinformatics Unit Open Source Dashboard';
 
   return (
     <main className="px-18 py-18 h-full flex flex-col">
       <Box className="flex flex-row items-center gap-6">
         <Image
           className="block h-8 w-auto"
-          src={`${basePath}/images/brainglobe.png`}
+          src={`${basePath}/images/SWC_Logo_4C_Grey.png`}
           height={50}
           width={150}
           alt="BrainGlobe logo"
         />
         <Text as="h1" className="font-semibold text-xl">
-          {data.orgInfo.name} Open Source Dashboard
-        </Text>
-      </Box>
-      <Box className="mt-2">
-        <Text as="h2" className="text-sm">
-          This project includes metrics about the Open Source repositories for{' '}
-          {data.orgInfo.name}.
+          {orgName}
         </Text>
       </Box>
       {!isSSR && showBanner && (
@@ -47,7 +41,7 @@ export const Layout: FC<PropsWithChildren> = ({ children }) => {
           >
             <Text>
               Open Source Health Metrics for{' '}
-              <Text className="font-semibold">{data.orgInfo.name}</Text>. Visit
+              <Text className="font-semibold">{orgName}</Text>. Visit
               the Documentation page to learn more about how these metrics are
               calculated.
             </Text>
@@ -71,13 +65,13 @@ export const Layout: FC<PropsWithChildren> = ({ children }) => {
             !router.pathname.includes('niu')
           }
         >
-          BrainGlobe Repositories
+          NIU Repositories
         </TabNav.Link>
         <TabNav.Link
           href={`${basePath}/niu`}
           selected={router.pathname.includes('niu')}
         >
-          NIU Repositories
+          BrainGlobe Repositories
         </TabNav.Link>
         <TabNav.Link
           href={`${basePath}/documentation`}

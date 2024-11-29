@@ -6,7 +6,7 @@ export default function NIUPage() {
     <main className="p-4 md:p-10 mx-auto max-w-7xl h-screen">
       <Layout>
         <RepositoriesTable
-          orgName='neuroinformatics-unit'
+          orgName='brainglobe'
         />
       </Layout>
     </main>
