@@ -23,8 +23,9 @@ export interface PePyResult {
 }
 
 const fetchDownloads = async (projectName: string) => {
-  let retries = 5;
-  let sleep_time = 1000;
+  let retries = 2;
+  // PePy API has a rate limit of 10 requests per minute
+  let sleep_time = 60_000;
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
   while (retries > 0) {
     try {
