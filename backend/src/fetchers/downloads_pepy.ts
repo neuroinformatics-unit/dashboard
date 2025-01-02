@@ -35,6 +35,11 @@ const fetchDownloads = async (projectName: string) => {
         }
       });
 
+      if (!response.ok && response.status === 404) {
+        console.error(`Project ${projectName} not found on PePy`);
+        return null;
+      }
+
       if (!response.ok) {
         console.error(`Error fetching download data for project ${projectName}: ${response.statusText}`);
         console.error(`Retrying... in ${sleep_time}ms`);
@@ -50,6 +55,8 @@ const fetchDownloads = async (projectName: string) => {
       await sleep(sleep_time);
     }
   }
+
+  return null;
 };
 
 const queryProjectsForRepositories = async (repositories: Repository[]) => {
