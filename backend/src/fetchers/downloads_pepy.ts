@@ -23,22 +23,31 @@ export interface PePyResult {
 }
 
 const fetchDownloads = async (projectName: string) => {
-  try {
-    const response = await fetch(`https://api.pepy.tech/api/v2/projects/${projectName}`, {
-      headers: {
-        'X-Api-Key': process.env.PEPY_API_KEY!,
+  let retries = 5;
+  let sleep_time = 1000;
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+  while (retries > 0) {
+    try {
+      const response = await fetch(`https://api.pepy.tech/api/v2/projects/${projectName}`, {
+        headers: {
+          'X-Api-Key': process.env.PEPY_API_KEY!,
+        }
+      });
+
+      if (!response.ok) {
+        console.error(`Error fetching download data for project ${projectName}: ${response.statusText}`);
+        console.error(`Retrying... in ${sleep_time}ms`);
+        retries--;
+        await sleep(sleep_time);
       }
-    });
 
-    if (!response.ok) {
-      console.error(`Error fetching download data for project ${projectName}: ${response.statusText}`);
-      return null;
+      return await response.json() as PePyResult;
+    } catch (error) {
+      console.error(`Error fetching download data for project ${projectName}:`, error);
+      console.error(`Retrying... in ${sleep_time}ms`);
+      retries--;
+      await sleep(sleep_time);
     }
-
-    return await response.json() as PePyResult;
-  } catch (error) {
-    console.error(`Error fetching download data for project ${projectName}:`, error);
-    return null;
   }
 };
 
