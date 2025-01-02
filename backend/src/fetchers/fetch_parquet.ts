@@ -74,7 +74,7 @@ export const addCondaData = async (result: Result, octokit: CustomOctokit, confi
                 // If the URL does not exist, assume that there are no more
                 // files to download and break the loop
                 if (!checkURLReq) {
-                    lastMonth = j - 1;
+                    lastMonth = j > 1 ? j - 1 : 12;
                     break;
                 } else {
                     await downloadParquetFile(url, fileName);
