@@ -76,7 +76,8 @@ export const addCondaData = async (result: Result, octokit: CustomOctokit, confi
                 if (!checkURLReq) {
                     lastMonth = j > 1 ? j - 1 : 12;
                     // Make sure we break out of the outer loop as well
-                    i = currYear;
+                    // Update teh current year to the last year we downloaded
+                    currYear = i;
                     break;
                 } else {
                     await downloadParquetFile(url, fileName);

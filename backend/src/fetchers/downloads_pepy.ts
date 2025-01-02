@@ -40,9 +40,9 @@ const fetchDownloads = async (projectName: string) => {
         return null;
       }
 
-      if (!response.ok) {
+      if (!response.ok && response.status === 429) {
         console.error(`Error fetching download data for project ${projectName}: ${response.statusText}`);
-        console.error(`Retrying... in ${sleep_time}ms`);
+        console.error(`Retrying in ${sleep_time}ms`);
         retries--;
         await sleep(sleep_time);
       }
@@ -50,7 +50,7 @@ const fetchDownloads = async (projectName: string) => {
       return await response.json() as PePyResult;
     } catch (error) {
       console.error(`Error fetching download data for project ${projectName}:`, error);
-      console.error(`Retrying... in ${sleep_time}ms`);
+      console.error(`Retrying in ${sleep_time}ms`);
       retries--;
       await sleep(sleep_time);
     }
