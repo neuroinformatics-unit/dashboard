@@ -35,6 +35,15 @@ jobs:
         uses: actions/setup-node@60edb5dd545a775178f52524783378180af0d1f8 # v4
         with:
           node-version: '20.x'
+      - name: Get current date
+        id: date
+        run: echo "DATE=$(date +'%Y-%m')" >> $GITHUB_ENV
+      - name: Restore conda downloads cache
+        uses: actions/cache@734d9cb93d6f7610c2400b0f789eaa6f9813e271 # v3
+        with:
+          path: |
+            ~/.dashboard
+          key: conda-download-cache-${{ env.DATE }}
       - name: Collect metrics and save output
         id: metrics
         run: |
@@ -68,9 +77,6 @@ jobs:
           #
           # You may remove this line if you want to manage the configuration yourself.
           static_site_generator: next
-      - name: Get current date
-        id: date
-        run: echo "DATE=$(date +'%Y-%m')" >> $GITHUB_ENV
       - name: Restore .next cache
         uses: actions/cache@734d9cb93d6f7610c2400b0f789eaa6f9813e271 # v3
         with:
@@ -81,12 +87,6 @@ jobs:
           # If source files changed but packages didn't, rebuild from a prior cache.
           restore-keys: |
             ${{ runner.os }}-nextjs-${{ hashFiles('**/package-lock.json', '**/yarn.lock') }}-
-      - name: Restore conda downloads cache
-        uses: actions/cache@734d9cb93d6f7610c2400b0f789eaa6f9813e271 # v3
-        with:
-          path: |
-            ~/.dashboard
-          key: conda-download-cache-${{ env.DATE }}
       - name: Install dependencies
         run: cd "${{ github.workspace }}/app" && ${{ steps.detect-package-manager.outputs.manager }} ${{ steps.detect-package-manager.outputs.command }}
       - name: Build with Next.js
