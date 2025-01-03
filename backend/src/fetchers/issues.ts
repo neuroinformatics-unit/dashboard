@@ -9,6 +9,7 @@ import {
 } from '@octokit/graphql-schema';
 import { Config, Fetcher } from '..';
 import { CustomOctokit } from '../lib/octokit';
+import excludedRepos from '../../excluded_repos.json';
 
 const getIssueAndPrData = async (octokit: CustomOctokit, config: Config) => {
   const issueData = await octokit.graphql.paginate<{
@@ -76,7 +77,12 @@ const getIssueAndPrData = async (octokit: CustomOctokit, config: Config) => {
 
 export const addIssueAndPrData: Fetcher = async (result, octokit, config) => {
   const dataResult = await getIssueAndPrData(octokit, config);
-  dataResult.organization.repositories.nodes.forEach((repo) => {
+  dataResult.organization.repositories.nodes.filter(
+    (repo) =>
+      !(excludedRepos.includes(repo!.name) ||
+        repo!.name.startsWith("slides-") ||
+        repo!.name.startsWith("course-")),
+  ).forEach((repo) => {
     result.repositories[repo.name] = {
       ...result.repositories[repo.name],
       totalIssuesCount: repo.totalIssues.totalCount,

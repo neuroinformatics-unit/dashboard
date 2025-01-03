@@ -3,6 +3,7 @@
 import { Organization } from '@octokit/graphql-schema';
 import { Config, Fetcher } from '..';
 import { CustomOctokit } from '../lib/octokit';
+import excludedRepos from '../../excluded_repos.json';
 
 const queryForDiscussions = async (octokit: CustomOctokit, config: Config) => {
   return await octokit.graphql.paginate<{ organization: Organization }>(
@@ -52,7 +53,14 @@ export const addDiscussionData: Fetcher = async (result, octokit, config) => {
     return result;
   }
 
-  for (const repo of dataResult) {
+  const filteredResult = dataResult.filter(
+    (repo) =>
+      !(excludedRepos.includes(repo!.repositoryName) ||
+        repo!.repositoryName.startsWith("slides-") ||
+        repo!.repositoryName.startsWith("course-")),
+  )
+
+  for (const repo of filteredResult) {
     result.repositories[repo.repositoryName].discussionsCount =
       repo.discussionsCount;
   }
