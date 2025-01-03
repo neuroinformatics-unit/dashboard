@@ -1,6 +1,7 @@
 import { CustomOctokit } from '../lib/octokit';
 import { Config } from '../index';
 import { Organization, Repository } from '@octokit/graphql-schema';
+import excludedRepos from '../../excluded_repos.json';
 
 export const queryRepoNames = async (octokit: CustomOctokit, config: Config) => {
   const organization = await octokit.graphql.paginate<{
@@ -29,7 +30,10 @@ export const queryRepoNames = async (octokit: CustomOctokit, config: Config) => 
 
   return organization.organization.repositories.nodes!.filter(
     (repo) =>
-      !(repo?.isArchived && !config.includeArchived) ||
-      !(repo.isFork && !config.includeForks),
+      (!(repo?.isArchived && !config.includeArchived) ||
+        !(repo.isFork && !config.includeForks)) &&
+      !(excludedRepos.includes(repo!.name) ||
+        repo!.name.startsWith("slides-") ||
+        repo!.name.startsWith("course-")),
   ) as Repository[];
 };
