@@ -3,6 +3,7 @@
 import { Organization, Repository } from '@octokit/graphql-schema';
 import { Fetcher } from '..';
 import { RepositoryResult } from '../../../types';
+import excludedRepos from '../../excluded_repos.json';
 
 export const addRepositoriesToResult: Fetcher = async (
   result,
@@ -65,9 +66,14 @@ export const addRepositoriesToResult: Fetcher = async (
 
   const filteredRepos = organization.organization.repositories.nodes!.filter(
     (repo) =>
-      !(repo?.isArchived && !config.includeArchived) ||
-      !(repo.isFork && !config.includeForks),
+      (!(repo?.isArchived && !config.includeArchived) ||
+      !(repo.isFork && !config.includeForks)) &&
+      !(excludedRepos.includes(repo!.name) ||
+      repo!.name.startsWith("slides-") ||
+      repo!.name.startsWith("course-")),
   ) as Repository[];
+
+  console.log(filteredRepos)
 
   // Just in case the filteredRepos is not stably ordered
   const contributorsMap = new Map<string, number>();
