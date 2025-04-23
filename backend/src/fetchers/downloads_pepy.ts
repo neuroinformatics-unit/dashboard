@@ -45,8 +45,6 @@ const queryProjectsForRepositories = async (repositories: Repository[]) => {
     while (retries > 0) {
       try {
         console.log(`Fetching download data for project ${repo.name}`);
-        console.log('Number of requests:', num_requests);
-        console.log('Number of retries:', retries);
 
         if (num_requests >= 8) {
           console.log(`Sleeping for ${sleep_time}ms to avoid rate limit`);
