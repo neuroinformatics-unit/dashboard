@@ -5,6 +5,9 @@ import { CustomOctokit } from '../lib/octokit';
 import { Repository } from '@octokit/graphql-schema';
 import { queryRepoNames } from './fetcher_utils';
 
+
+let num_requests = 0;
+
 export interface PePyResult {
   id: string;
   total_downloads: number;
@@ -23,49 +26,65 @@ export interface PePyResult {
 }
 
 const fetchDownloads = async (projectName: string) => {
-  let retries = 2;
-  // PePy API has a rate limit of 10 requests per minute
-  let sleep_time = 70_000;
-  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-  while (retries > 0) {
-    try {
-      const response = await fetch(`https://api.pepy.tech/api/v2/projects/${projectName}`, {
-        headers: {
-          'X-Api-Key': process.env.PEPY_API_KEY!,
-        }
-      });
-
-      if (!response.ok && response.status === 404) {
-        console.error(`Project ${projectName} not found on PePy`);
-        return null;
-      }
-
-      if (!response.ok && response.status === 429) {
-        console.error(`Error fetching download data for project ${projectName}: ${response.statusText}`);
-        console.error(`Retrying in ${sleep_time}ms`);
-        retries--;
-        await sleep(sleep_time);
-      }
-
-      return await response.json() as PePyResult;
-    } catch (error) {
-      console.error(`Error fetching download data for project ${projectName}:`, error);
-      console.error(`Retrying in ${sleep_time}ms`);
-      retries--;
-      await sleep(sleep_time);
+  return await fetch(`https://api.pepy.tech/api/v2/projects/${projectName}`, {
+    headers: {
+      'X-Api-Key': process.env.PEPY_API_KEY!,
     }
-  }
-
-  return null;
-};
+  });
+}
 
 const queryProjectsForRepositories = async (repositories: Repository[]) => {
   const projectResults = [];
+  // PePy API has a rate limit of 10 requests per minute
+  let sleep_time = 80_000;
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
   for (const repo of repositories) {
-    const projectData = await fetchDownloads(repo.name);
-    if (projectData) {
-      projectResults.push({repoName: repo.name, data: projectData as PePyResult});
+    // Retry fetching the project data if it fails
+    let retries = 2;
+    while (retries > 0) {
+      try {
+        console.log(`Fetching download data for project ${repo.name}`);
+        console.log('Number of requests:', num_requests);
+        console.log('Number of retries:', retries);
+
+        if (num_requests >= 8) {
+          console.log(`Sleeping for ${sleep_time}ms to avoid rate limit`);
+          await sleep(sleep_time);
+          num_requests = 0;
+        }
+
+        num_requests++;
+        const response = await fetchDownloads(repo.name);
+
+        if (response.status === 404) {
+          console.error(`Project ${repo.name} not found on PePy`);
+          console.error(`Skipping project ${repo.name}`);
+          break;
+        }
+
+        if (response.status === 429) {
+          console.error(`Error fetching download data for project ${repo.name}: ${response.statusText}`);
+          console.error(`Retrying in ${sleep_time}ms`);
+          retries--;
+          num_requests = 0;
+          await sleep(sleep_time);
+          continue;
+        }
+
+        const projectData = await response.json() as PePyResult;
+        if (projectData) {
+          projectResults.push({ repoName: repo.name, data: projectData as PePyResult });
+
+          break;
+        }
+      } catch (error) {
+        console.error(`Error fetching download data for project ${repo.name}:`, error);
+        console.error(`Retrying in ${sleep_time}ms`);
+        retries--;
+        num_requests = 0;
+        await sleep(sleep_time);
+      }
     }
   }
 
