@@ -18,6 +18,7 @@ const nextConfig = {
   compiler: {
     styledComponents: true,
   },
+  output: 'export',
   reactStrictMode: true,
   productionBrowserSourceMaps: true,
   pageExtensions: ['js', 'jsx', 'mdx', 'ts', 'tsx', 'json'],
