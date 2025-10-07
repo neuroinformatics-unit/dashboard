@@ -91,8 +91,8 @@ jobs:
         run: cd "${{ github.workspace }}/app" && ${{ steps.detect-package-manager.outputs.manager }} ${{ steps.detect-package-manager.outputs.command }}
       - name: Build with Next.js
         run: cd "${{ github.workspace }}/app" && ${{ steps.detect-package-manager.outputs.runner }} next build
-      - name: Static HTML export with Next.js
-        run: cd "${{ github.workspace }}/app" && ${{ steps.detect-package-manager.outputs.runner }} next export
+#      - name: Static HTML export with Next.js
+#        run: cd "${{ github.workspace }}/app" && ${{ steps.detect-package-manager.outputs.runner }} next export
       - name: Upload artifact
         uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
         with:
