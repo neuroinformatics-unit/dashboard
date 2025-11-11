@@ -13,7 +13,7 @@
     "@primer/octicons-react": "^19.20.0",
     "@primer/react": "^36.12.0",
     "@tailwindcss/typography": "^0.5.19",
-    "autoprefixer": "^10.4.19",
+    "autoprefixer": "^10.4.22",
     "file-saver": "^2.0.5",
     "json-2-csv": "^5.5.10",
     "marked": "^12.0.1",
