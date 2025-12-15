@@ -39,7 +39,7 @@ jobs:
         id: date
         run: echo "DATE=$(date +'%Y-%m')" >> $GITHUB_ENV
       - name: Restore conda downloads cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.dashboard
@@ -78,7 +78,7 @@ jobs:
           # You may remove this line if you want to manage the configuration yourself.
           static_site_generator: next
       - name: Restore .next cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             "${{ github.workspace }}/app/.next/cache"
