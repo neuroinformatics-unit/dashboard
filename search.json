@@ -1,0 +1,51 @@
+[
+  {
+    "objectID": "CLAUDE.html",
+    "href": "CLAUDE.html",
+    "title": "CLAUDE.md",
+    "section": "",
+    "text": "This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.\n\n\nThis is a Python package (oss-dashboard) that fetches GitHub organization metrics using the GitHub GraphQL and REST APIs. It collects repository statistics, issue/PR data, discussion counts, and download metrics from PEPY (PyPI) and Conda.\n\n\n\n\n\npip install -e \".[dev]\"\n\n\n\nconda activate dashboard\npython -m oss_dashboard.main\nRequires GRAPHQL_TOKEN and PEPY_API_KEY environment variables (see .env).\n\n\n\nquarto render\n\n\n\npytest                           # Run all tests with coverage\npytest tests/test_unit/          # Run unit tests only\npytest -v --color=yes            # Verbose output\n\n\n\nruff check .                     # Run linter\nruff format .                    # Format code\nruff check --fix .               # Auto-fix linting issues\npre-commit run --all-files       # Run all pre-commit hooks (ruff, mypy, codespell)\n\n\n\ntox                              # Run tests on Python 3.11, 3.12, 3.13\n\n\n\n\n\n\nThe codebase uses a pipeline pattern where fetchers sequentially transform a Result dataclass. Each fetcher function has the signature:\ndef add_*_to_result(result: Result, client: GitHubClient, config: Config) -&gt; Result\nThe pipeline runs in main.py:run_pipeline() with this order: 1. add_meta_to_result - Adds timestamp metadata 2. add_organization_info_to_result - Fetches org details 3. add_repositories_to_result - Fetches all public repos 4. add_issue_and_pr_data - Adds issue/PR counts 5. add_discussion_data - Adds discussion counts 6. add_issue_metrics_data - Calculates issue age metrics 7. add_downloads_pepy - Fetches PyPI download stats 8. add_conda_data - Fetches Conda download stats\n\n\n\n\noss_dashboard/lib/github_client.py: Wrapper around PyGithub with GraphQL pagination support and rate limit handling\noss_dashboard/models.py: Dataclasses (Result, RepositoryResult, Config, etc.) with automatic snake_case to camelCase conversion for JSON output\noss_dashboard/fetchers/: Individual fetcher modules, each responsible for one data domain\n\n\n\n\n\noss_dashboard/config.yml: Defines target organizations, start date for metrics, and GitHub Pages base path\nOrganizations can be a single string or list of strings\nOutput is written to app/src/data/data_{org_name}.json\n\n\n\n\n\n\nLine length: 79 characters\nRuff for linting (E, F, I rules) and formatting\nType hints required (mypy enforced)\nDocstrings follow Google style"
+  },
+  {
+    "objectID": "CLAUDE.html#project-overview",
+    "href": "CLAUDE.html#project-overview",
+    "title": "CLAUDE.md",
+    "section": "",
+    "text": "This is a Python package (oss-dashboard) that fetches GitHub organization metrics using the GitHub GraphQL and REST APIs. It collects repository statistics, issue/PR data, discussion counts, and download metrics from PEPY (PyPI) and Conda."
+  },
+  {
+    "objectID": "CLAUDE.html#commands",
+    "href": "CLAUDE.html#commands",
+    "title": "CLAUDE.md",
+    "section": "",
+    "text": "pip install -e \".[dev]\"\n\n\n\nconda activate dashboard\npython -m oss_dashboard.main\nRequires GRAPHQL_TOKEN and PEPY_API_KEY environment variables (see .env).\n\n\n\nquarto render\n\n\n\npytest                           # Run all tests with coverage\npytest tests/test_unit/          # Run unit tests only\npytest -v --color=yes            # Verbose output\n\n\n\nruff check .                     # Run linter\nruff format .                    # Format code\nruff check --fix .               # Auto-fix linting issues\npre-commit run --all-files       # Run all pre-commit hooks (ruff, mypy, codespell)\n\n\n\ntox                              # Run tests on Python 3.11, 3.12, 3.13"
+  },
+  {
+    "objectID": "CLAUDE.html#architecture",
+    "href": "CLAUDE.html#architecture",
+    "title": "CLAUDE.md",
+    "section": "",
+    "text": "The codebase uses a pipeline pattern where fetchers sequentially transform a Result dataclass. Each fetcher function has the signature:\ndef add_*_to_result(result: Result, client: GitHubClient, config: Config) -&gt; Result\nThe pipeline runs in main.py:run_pipeline() with this order: 1. add_meta_to_result - Adds timestamp metadata 2. add_organization_info_to_result - Fetches org details 3. add_repositories_to_result - Fetches all public repos 4. add_issue_and_pr_data - Adds issue/PR counts 5. add_discussion_data - Adds discussion counts 6. add_issue_metrics_data - Calculates issue age metrics 7. add_downloads_pepy - Fetches PyPI download stats 8. add_conda_data - Fetches Conda download stats\n\n\n\n\noss_dashboard/lib/github_client.py: Wrapper around PyGithub with GraphQL pagination support and rate limit handling\noss_dashboard/models.py: Dataclasses (Result, RepositoryResult, Config, etc.) with automatic snake_case to camelCase conversion for JSON output\noss_dashboard/fetchers/: Individual fetcher modules, each responsible for one data domain\n\n\n\n\n\noss_dashboard/config.yml: Defines target organizations, start date for metrics, and GitHub Pages base path\nOrganizations can be a single string or list of strings\nOutput is written to app/src/data/data_{org_name}.json"
+  },
+  {
+    "objectID": "CLAUDE.html#code-style",
+    "href": "CLAUDE.html#code-style",
+    "title": "CLAUDE.md",
+    "section": "",
+    "text": "Line length: 79 characters\nRuff for linting (E, F, I rules) and formatting\nType hints required (mypy enforced)\nDocstrings follow Google style"
+  },
+  {
+    "objectID": "about.html",
+    "href": "about.html",
+    "title": "About",
+    "section": "",
+    "text": "The Dashboard is currently a snapshot of data from the SWC/GCNU Neuroinformatics Unit Repositories. All the metrics are based on the Last Updated Date reflected on the top of the dashboard.\n\n\n\nCollaborators: Collaborator is an individual that can read and write to the current repository. Metric calculates the current number of Collaborators.\nWatchers: The number of users who are tracking a particular repository, receiving notifications regarding its activity.\nOpen Issues: Issues are tickets that represent bugs or new features that other people report and can collaborate on. Open issues are total of unresolved issues.\nOpen PR's: A pull request is a request to make a change to the files of the project (code, documentation, README changes, etc.). Open PR’s are the total of pull requests with status Open.\nMerge PR's: A total of Pull Requests that are accepted into the code base of the project.\nTotal Fork: A fork is a copy of the current repository belonging to another user. Total Forks is how many times the repository has been copied.\nOpen Issues Median Age: Median number of days for all issues with Open status. If the issue age is zero (meaning there are no open issues), we display “N/A”.\nClose Issues Median Age: Median number of days for all issues with Closed status. If the issue age is zero (meaning there are no open issues), we display “N/A”.\nIssue Response Median Age: Median response time of issues that has a response. If the issue response age is zero (meaning there are no comments), we display “N/A”. If the first response is by the creator of the issue the comment is not counted.\nIssue Response Average Age: Average response time of issues that has a response. If the issue response age is zero (meaning there are no comments), we display “N/A”. If the first response is by the creator of the issue the comment is not counted. Calculation is Issues Total Response Time divide by Total Issues"
+  },
+  {
+    "objectID": "about.html#welcome-to-the-open-source-metrics-documentation",
+    "href": "about.html#welcome-to-the-open-source-metrics-documentation",
+    "title": "About",
+    "section": "",
+    "text": "The Dashboard is currently a snapshot of data from the SWC/GCNU Neuroinformatics Unit Repositories. All the metrics are based on the Last Updated Date reflected on the top of the dashboard.\n\n\n\nCollaborators: Collaborator is an individual that can read and write to the current repository. Metric calculates the current number of Collaborators.\nWatchers: The number of users who are tracking a particular repository, receiving notifications regarding its activity.\nOpen Issues: Issues are tickets that represent bugs or new features that other people report and can collaborate on. Open issues are total of unresolved issues.\nOpen PR's: A pull request is a request to make a change to the files of the project (code, documentation, README changes, etc.). Open PR’s are the total of pull requests with status Open.\nMerge PR's: A total of Pull Requests that are accepted into the code base of the project.\nTotal Fork: A fork is a copy of the current repository belonging to another user. Total Forks is how many times the repository has been copied.\nOpen Issues Median Age: Median number of days for all issues with Open status. If the issue age is zero (meaning there are no open issues), we display “N/A”.\nClose Issues Median Age: Median number of days for all issues with Closed status. If the issue age is zero (meaning there are no open issues), we display “N/A”.\nIssue Response Median Age: Median response time of issues that has a response. If the issue response age is zero (meaning there are no comments), we display “N/A”. If the first response is by the creator of the issue the comment is not counted.\nIssue Response Average Age: Average response time of issues that has a response. If the issue response age is zero (meaning there are no comments), we display “N/A”. If the first response is by the creator of the issue the comment is not counted. Calculation is Issues Total Response Time divide by Total Issues"
+  }
+]
