@@ -1,0 +1,8 @@
+{
+  "bg-space": "brainglobe-space",
+  "bg-atlasapi": "brainglobe-atlasapi",
+  "cellfinder-core": "cellfinder",
+  "cellfinder-napari": "cellfinder",
+  "brainreg-segment": "brainglobe-segmentation",
+  "brainreg-napari": "brainreg"
+}
