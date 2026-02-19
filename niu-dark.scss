@@ -4,5 +4,15 @@
 }
 
 /*-- scss:rules --*/
+body.quarto-dark .nav-tabs .nav-link {
+    color: #FFFFFF;
+}
 
-
+body.quarto-dark table.dataTable thead tr>.dtfc-fixed-start,
+body.quarto-dark table.dataTable thead tr>.dtfc-fixed-end,
+body.quarto-dark table.dataTable tfoot tr>.dtfc-fixed-start,
+body.quarto-dark table.dataTable tfoot tr>.dtfc-fixed-end,
+body.quarto-dark table.dataTable tbody tr>.dtfc-fixed-start,
+body.quarto-dark table.dataTable tbody tr>.dtfc-fixed-end {
+    background-color: #1E1E1E;
+}

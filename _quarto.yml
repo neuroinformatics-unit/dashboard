@@ -18,8 +18,8 @@ website:
 format:
   html:
     theme:
-      light: [brand, niu-light.scss]
-      dark: [brand, niu-dark.scss]
+      light: [niu-light.scss, brand]
+      dark: [niu-dark.scss, brand]
     toc: true
     page-layout: full
     mainfont: "Barlow"
