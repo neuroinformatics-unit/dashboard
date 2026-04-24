@@ -142,13 +142,30 @@ def _count_collaborators_via_commits(
             time.sleep(RATE_LIMIT_SLEEP_SECONDS)
             continue
 
+        if not isinstance(result, dict):
+            logger.warning(
+                "Invalid GraphQL response while fetching collaborators "
+                "for %s/%s; expected dict but got %s",
+                org,
+                repo_name,
+                type(result).__name__,
+            )
+            return set()
         branch_ref = (result.get("repository") or {}).get(
             "defaultBranchRef"
         )
         if not branch_ref:
             break
 
-        history = branch_ref["target"]["history"]
+        target = branch_ref.get("target") or {}
+        history = target.get("history")
+        if not history:
+            logger.debug(
+                "No commit history available for %s/%s default branch target",
+                org,
+                repo_name,
+            )
+            break
         for commit in history.get("nodes") or []:
             if not commit:
                 continue
@@ -212,9 +229,17 @@ def _fetch_all_collaborators(
             client, org, repo_name, since=since
         )
         all_collaborators = known_collaborators | new_collaborators
+        previous_cached_at = entry.get("cached_at")
+        next_cached_at = now
+        if since and not new_collaborators and previous_cached_at:
+            # Preserve the previous boundary when an incremental fetch
+            # yields no newly discovered collaborators. This avoids
+            # advancing the cache cursor on ambiguous empty/incomplete
+            # results and potentially skipping commits permanently.
+            next_cached_at = previous_cached_at
         cache[repo_name] = {
             "collaborators": sorted(all_collaborators),
-            "cached_at": now,
+            "cached_at": next_cached_at,
         }
         counts[repo_name] = len(all_collaborators)
         logger.debug("%s: %d collaborators", repo_name, len(all_collaborators))
