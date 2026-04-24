@@ -16,11 +16,12 @@ from oss_dashboard.models import Config, RepositoryResult, Result
 
 logger = logging.getLogger(__name__)
 
-_DATA_DIR = Path(__file__).parent.parent / "data"
+_COLLABORATORS_CACHE_DIR = Path.home() / ".brainglobe" / "brainglobe.github.io"
 
 
 def _cache_path(org: str) -> Path:
-    return _DATA_DIR / f"collaborators_cache_{org}.json"
+    _COLLABORATORS_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    return _COLLABORATORS_CACHE_DIR / f"collaborators_cache_{org}.json"
 
 
 def _load_collaborators_cache(org: str) -> dict[str, dict]:
@@ -158,7 +159,7 @@ def _count_collaborators_via_commits(
                     continue
                 user = author.get("user")
                 login = user.get("login") if user else None
-                if login and "[bot]" not in login:
+                if login:
                     unique_authors.add(login)
                 elif not login and author.get("email"):
                     unique_authors.add(author["email"])
