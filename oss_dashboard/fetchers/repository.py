@@ -142,13 +142,30 @@ def _count_collaborators_via_commits(
             time.sleep(RATE_LIMIT_SLEEP_SECONDS)
             continue
 
+        if not isinstance(result, dict):
+            logger.warning(
+                "Invalid GraphQL response while fetching collaborators "
+                "for %s/%s; expected dict but got %s",
+                org,
+                repo_name,
+                type(result).__name__,
+            )
+            return set()
         branch_ref = (result.get("repository") or {}).get(
             "defaultBranchRef"
         )
         if not branch_ref:
             break
 
-        history = branch_ref["target"]["history"]
+        target = branch_ref.get("target") or {}
+        history = target.get("history")
+        if not history:
+            logger.debug(
+                "No commit history available for %s/%s default branch target",
+                org,
+                repo_name,
+            )
+            break
         for commit in history.get("nodes") or []:
             if not commit:
                 continue
@@ -301,7 +318,7 @@ def add_repositories_to_result(
 
             all_repos.append(repo)
 
-    # Fetch collaborator counts (cached by repo, refreshed when stale)
+    # Fetch collaborator counts (cached by repo, refreshed incrementally)
     cache = _load_collaborators_cache(config.organization)
     collaborators_map = _fetch_all_collaborators(
         client, config.organization, all_repos, cache
