@@ -16,7 +16,7 @@ from oss_dashboard.models import Config, RepositoryResult, Result
 
 logger = logging.getLogger(__name__)
 
-_COLLABORATORS_CACHE_DIR = Path.home() / ".oss_dashboard" 
+_COLLABORATORS_CACHE_DIR = Path.home() / ".dashboard" / "collaborators_cache"
 
 
 def _cache_path(org: str) -> Path:
