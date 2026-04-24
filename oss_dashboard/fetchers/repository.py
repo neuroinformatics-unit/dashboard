@@ -76,11 +76,10 @@ def _count_collaborators_via_commits(
     """Collect unique collaborators from default branch commit history.
 
     Iterates all commits on the default branch via GraphQL and collects
-    distinct authors by GitHub login (for linked accounts) or by email
-    for unlinked commits.  The ``authors`` connection covers both the
-    primary author and any ``Co-authored-by:`` trailer entries, matching
-    GitHub's own collaborator grouping logic without requiring the async
-    ``/stats/collaborators`` endpoint.
+    distinct authors by GitHub login.  Uses ``authors(first: 100)`` to
+    cover both the primary author and all ``Co-authored-by:`` trailer
+    entries, including large merge commits.  Authors without a linked
+    GitHub account are skipped.
 
     Args:
         client: GitHub API client
@@ -90,7 +89,7 @@ def _count_collaborators_via_commits(
             fetched.  When omitted, the full history is traversed.
 
     Returns:
-        Set of collaborator logins/emails
+        Set of collaborator logins
     """
     query = """
     query (
@@ -106,12 +105,11 @@ def _count_collaborators_via_commits(
                                 endCursor
                             }
                             nodes {
-                                authors(first: 10) {
+                                authors(first: 100) {
                                     nodes {
                                         user {
                                             login
                                         }
-                                        email
                                     }
                                 }
                             }
@@ -161,8 +159,6 @@ def _count_collaborators_via_commits(
                 login = user.get("login") if user else None
                 if login:
                     unique_authors.add(login)
-                elif not login and author.get("email"):
-                    unique_authors.add(author["email"])
 
         page_info = history.get("pageInfo", {})
         has_next_page = page_info.get("hasNextPage", False)
