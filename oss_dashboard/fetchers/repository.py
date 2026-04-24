@@ -301,7 +301,7 @@ def add_repositories_to_result(
 
             all_repos.append(repo)
 
-    # Fetch collaborator counts (cached by repo, refreshed when stale)
+    # Fetch collaborator counts (cached by repo, refreshed incrementally)
     cache = _load_collaborators_cache(config.organization)
     collaborators_map = _fetch_all_collaborators(
         client, config.organization, all_repos, cache
