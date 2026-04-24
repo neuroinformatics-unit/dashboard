@@ -44,12 +44,21 @@ jobs:
         run: echo "DATE=$(date +'%Y-%m')" >> $GITHUB_ENV
 
       - name: Restore conda downloads cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.dashboard
           key: conda-download-cache-${{ env.DATE }}
           restore-keys: |
             conda-download-cache-
+
+      - name: Restore collaborators cache
+        uses: actions/cache@v5
+        with:
+          path: ~/.brainglobe/brainglobe.github.io
+          key: collaborators-cache-${{ env.DATE }}-${{ github.run_id }}
+          restore-keys: |
+            collaborators-cache-${{ env.DATE }}-
+            collaborators-cache-
 
       - name: Install dependencies
         run: |
