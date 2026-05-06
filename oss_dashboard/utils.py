@@ -15,6 +15,7 @@ def format_data(data_path: str) -> pd.DataFrame:
     """Format JSON data for display in the dashboard."""
     with open(data_path) as f:
         data_json = json.load(f)
+        org_name = data_json["org_info"]["login"]
         data = data_json["repositories"]
 
     data = pd.DataFrame.from_dict(data, orient="index")
@@ -64,6 +65,8 @@ def format_data(data_path: str) -> pd.DataFrame:
 
     data = data[cols_to_keep]
     data = data.rename(columns=rename_map)
+
+    data["name"] = data["name"].apply(lambda x: f"<a href='https://github.com/{org_name}/{x}' target='_blank'>{x}</a>")
 
     # Format topics as comma-separated list or empty string
     data["topics"] = data["topics"].apply(lambda x: ", ".join(x) if x else "")

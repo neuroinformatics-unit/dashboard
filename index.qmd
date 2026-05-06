@@ -22,6 +22,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
 ```{python}
 #| label: load-packages
+from pathlib import Path
+
 import itables
 from oss_dashboard.utils import format_data
 ```
@@ -30,13 +32,15 @@ from oss_dashboard.utils import format_data
 #| label: load-data
 #| message: false
 
-niu_data, niu_date = format_data("oss_dashboard/data/data_neuroinformatics-unit.json")
-brainglobe_data, brainglobe_date = format_data("oss_dashboard/data/data_brainglobe.json")
+cache_path = Path.home() / ".dashboard" / "data"
+niu_data, niu_date = format_data(cache_path / "data_neuroinformatics-unit.json")
+brainglobe_data, brainglobe_date = format_data(cache_path / "data_brainglobe.json")
 
 itables.options.classes="display nowrap cell-border"
 itables.options.buttons = ["csv", "colvis"]
 itables.options.columnControl=["order", "searchDropdown"]
 itables.options.ordering = {"indicators": False, "handler": False}
+itables.options.allow_html = True
 
 table_options = {
     "columnDefs": [
