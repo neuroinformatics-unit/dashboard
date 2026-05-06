@@ -32,6 +32,7 @@ from oss_dashboard.utils import format_data
 
 niu_data, niu_date = format_data("oss_dashboard/data/data_neuroinformatics-unit.json")
 brainglobe_data, brainglobe_date = format_data("oss_dashboard/data/data_brainglobe.json")
+photon_mosaic_data, photon_mosaic_date = format_data("oss_dashboard/data/data_photon-mosaic.json")
 
 itables.options.classes="display nowrap cell-border"
 itables.options.buttons = ["csv", "colvis"]
@@ -92,4 +93,10 @@ print("Data last updated on:", niu_date.strftime("%A, %d. %B %Y %I:%M%p"))
 #| title: "BrainGlobe"
 itables.show(brainglobe_data, **table_options)
 print("Data last updated on:", brainglobe_date.strftime("%A, %d. %B %Y %I:%M%p"))
+```
+
+```{python}
+#| title: "Photon Mosaic"
+itables.show(photon_mosaic_data, **table_options)
+print("Data last updated on:", photon_mosaic_date.strftime("%A, %d. %B %Y %I:%M%p"))
 ```
