@@ -85,7 +85,7 @@ def output_result(result: Result, org_name: str) -> Path:
     Returns:
         Path to the output file
     """
-    destination = Path(__file__).parent / "data" / f"data_{org_name}.json"
+    destination = Path.home() / ".dashboard" / f"data_{org_name}.json"
     destination.parent.mkdir(parents=True, exist_ok=True)
 
     with open(destination, "w") as f:
