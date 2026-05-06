@@ -30,9 +30,10 @@ from oss_dashboard.utils import format_data
 #| label: load-data
 #| message: false
 
-niu_data, niu_date = format_data("oss_dashboard/data/data_neuroinformatics-unit.json")
-brainglobe_data, brainglobe_date = format_data("oss_dashboard/data/data_brainglobe.json")
-photon_mosaic_data, photon_mosaic_date = format_data("oss_dashboard/data/data_photon-mosaic.json")
+data_cache_path = Path.home() / ".dashboard"
+niu_data, niu_date = format_data(data_cache_path / "data_neuroinformatics-unit.json")
+brainglobe_data, brainglobe_date = format_data(data_cache_path / "data_brainglobe.json")
+photon_mosaic_data, photon_mosaic_date = format_data(data_cache_path / "data_photon-mosaic.json")
 
 itables.options.classes="display nowrap cell-border"
 itables.options.buttons = ["csv", "colvis"]
