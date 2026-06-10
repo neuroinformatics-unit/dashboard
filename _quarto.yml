@@ -7,7 +7,7 @@ execute:
 
 website:
   favicon: /img/logo_niu_light.png
-  site-url: "https://neuroinformatics.dev/dashboard/"
+  site-url: "https://dashboard.neuroinformatics.dev"
   navbar:
     left:
       - href: index.qmd
