@@ -1,1 +1,1 @@
-Sitemap: https://neuroinformatics.dev/dashboard/sitemap.xml
+Sitemap: https://dashboard.neuroinformatics.dev/sitemap.xml

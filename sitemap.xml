@@ -1,11 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>https://neuroinformatics.dev/dashboard/index.html</loc>
-    <lastmod>2026-06-10T07:46:57.021Z</lastmod>
+    <loc>https://dashboard.neuroinformatics.dev/index.html</loc>
+    <lastmod>2026-06-10T12:34:35.578Z</lastmod>
   </url>
   <url>
-    <loc>https://neuroinformatics.dev/dashboard/about.html</loc>
-    <lastmod>2026-06-10T07:46:57.019Z</lastmod>
+    <loc>https://dashboard.neuroinformatics.dev/about.html</loc>
+    <lastmod>2026-06-10T12:34:35.577Z</lastmod>
   </url>
 </urlset>
