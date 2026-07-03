@@ -40,7 +40,7 @@ The `GRAPHQL_TOKEN` requires the following GitHub scopes:
 - `read:project`
 
 > [!NOTE]
-> To fetch collaborator counts, the token must belong to an organization admin.
+> To fetch contributor counts, the token must belong to an organization admin.
 
 Get a PEPY API key from [pepy.tech](https://www.pepy.tech/pepy-api) for PyPI download statistics.
 

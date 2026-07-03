@@ -16,20 +16,20 @@ from oss_dashboard.models import Config, RepositoryResult, Result
 
 logger = logging.getLogger(__name__)
 
-_COLLABORATORS_CACHE_DIR = Path.home() / ".dashboard" / "collaborators_cache"
+_Contributers_CACHE_DIR = Path.home() / ".dashboard" / "Contributers_cache"
 
 
 def _cache_path(org: str) -> Path:
-    _COLLABORATORS_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    return _COLLABORATORS_CACHE_DIR / f"collaborators_cache_{org}.json"
+    _Contributers_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    return _Contributers_CACHE_DIR / f"Contributers_cache_{org}.json"
 
 
-def _load_collaborators_cache(org: str) -> dict[str, dict]:
-    """Load the collaborators cache for an org from disk.
+def _load_Contributers_cache(org: str) -> dict[str, dict]:
+    """Load the Contributers cache for an org from disk.
 
     Returns:
         Mapping of repo name to
-        ``{"collaborators": list[str], "cached_at": ISO str}``
+        ``{"Contributers": list[str], "cached_at": ISO str}``
     """
     path = _cache_path(org)
     if not path.exists():
@@ -37,22 +37,22 @@ def _load_collaborators_cache(org: str) -> dict[str, dict]:
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError) as exc:
-        logger.warning("Could not read collaborators cache: %s", exc)
+        logger.warning("Could not read Contributers cache: %s", exc)
         return {}
 
 
-def _save_collaborators_cache(
+def _save_Contributers_cache(
     org: str, cache: dict[str, dict]
 ) -> None:
-    """Persist the collaborators cache for an org to disk."""
+    """Persist the Contributers cache for an org to disk."""
     path = _cache_path(org)
     try:
         path.write_text(
             json.dumps(cache, indent=2), encoding="utf-8"
         )
-        logger.debug("Collaborators cache saved to %s", path)
+        logger.debug("Contributers cache saved to %s", path)
     except OSError as exc:
-        logger.warning("Could not save collaborators cache: %s", exc)
+        logger.warning("Could not save Contributers cache: %s", exc)
 
 
 def _parse_cached_at(entry: dict) -> str | None:
@@ -67,13 +67,13 @@ def _parse_cached_at(entry: dict) -> str | None:
         return None
 
 
-def _count_collaborators_via_commits(
+def _count_Contributers_via_commits(
     client: GitHubClient,
     org: str,
     repo_name: str,
     since: str | None = None,
 ) -> set[str]:
-    """Collect unique collaborators from default branch commit history.
+    """Collect unique Contributers from default branch commit history.
 
     Iterates all commits on the default branch via GraphQL and collects
     distinct authors by GitHub login.  Uses ``authors(first: 100)`` to
@@ -89,7 +89,7 @@ def _count_collaborators_via_commits(
             fetched.  When omitted, the full history is traversed.
 
     Returns:
-        Set of collaborator logins
+        Set of contributor logins
     """
     query = """
     query (
@@ -144,7 +144,7 @@ def _count_collaborators_via_commits(
 
         if not isinstance(result, dict):
             logger.warning(
-                "Invalid GraphQL response while fetching collaborators "
+                "Invalid GraphQL response while fetching Contributers "
                 "for %s/%s; expected dict but got %s",
                 org,
                 repo_name,
@@ -184,13 +184,13 @@ def _count_collaborators_via_commits(
     return unique_authors
 
 
-def _fetch_all_collaborators(
+def _fetch_all_Contributers(
     client: GitHubClient,
     org: str,
     repos: list[dict[str, Any]],
     cache: dict[str, dict],
 ) -> dict[str, int]:
-    """Fetch collaborator counts for all repositories.
+    """Fetch contributor counts for all repositories.
 
     Uses commit history on the default branch via GraphQL to collect
     distinct authors.  The cache acts as a historical record: if an entry
@@ -205,36 +205,36 @@ def _fetch_all_collaborators(
         cache: Mutable cache dict updated in place
 
     Returns:
-        Mapping of repo name to collaborator count
+        Mapping of repo name to contributor count
     """
     counts: dict[str, int] = {}
     now = datetime.now(tz=timezone.utc).isoformat()
 
     logger.info(
-        "Fetching collaborators for %d repositories", len(repos)
+        "Fetching Contributers for %d repositories", len(repos)
     )
 
     for repo in repos:
         repo_name = repo["name"]
         entry = cache.get(repo_name, {})
         since = _parse_cached_at(entry)
-        known_collaborators: set[str] = set(entry.get("collaborators", []))
+        known_Contributers: set[str] = set(entry.get("Contributers", []))
 
         if since:
             logger.debug("%s: fetching commits since %s", repo_name, since)
         else:
             logger.debug("%s: fetching full commit history", repo_name)
 
-        new_collaborators = _count_collaborators_via_commits(
+        new_Contributers = _count_Contributers_via_commits(
             client, org, repo_name, since=since
         )
-        all_collaborators = known_collaborators | new_collaborators
+        all_Contributers = known_Contributers | new_Contributers
         cache[repo_name] = {
-            "collaborators": sorted(all_collaborators),
+            "Contributers": sorted(all_Contributers),
             "cached_at": now,
         }
-        counts[repo_name] = len(all_collaborators)
-        logger.debug("%s: %d collaborators", repo_name, len(all_collaborators))
+        counts[repo_name] = len(all_Contributers)
+        logger.debug("%s: %d Contributers", repo_name, len(all_Contributers))
 
     return counts
 
@@ -318,12 +318,12 @@ def add_repositories_to_result(
 
             all_repos.append(repo)
 
-    # Fetch collaborator counts (cached by repo, refreshed incrementally)
-    cache = _load_collaborators_cache(config.organization)
-    collaborators_map = _fetch_all_collaborators(
+    # Fetch contributor counts (cached by repo, refreshed incrementally)
+    cache = _load_Contributers_cache(config.organization)
+    Contributers_map = _fetch_all_Contributers(
         client, config.organization, all_repos, cache
     )
-    _save_collaborators_cache(config.organization, cache)
+    _save_Contributers_cache(config.organization, cache)
 
     # Build repository results
     for repo in all_repos:
@@ -348,7 +348,7 @@ def add_repositories_to_result(
             forks_count=repo.get("forkCount", 0),
             watchers_count=repo.get("watchers", {}).get("totalCount", 0),
             stars_count=repo.get("stargazerCount", 0),
-            collaborators_count=collaborators_map.get(repo_name, 0),
+            Contributers_count=Contributers_map.get(repo_name, 0),
             issues_enabled=repo.get("hasIssuesEnabled", False),
             projects_enabled=repo.get("hasProjectsEnabled", False),
             discussions_enabled=repo.get("hasDiscussionsEnabled", False),
