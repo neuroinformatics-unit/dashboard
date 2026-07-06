@@ -16,20 +16,20 @@ from oss_dashboard.models import Config, RepositoryResult, Result
 
 logger = logging.getLogger(__name__)
 
-_CONTRIBUTERS_CACHE_DIR = Path.home() / ".dashboard" / "contributers_cache"
+_contributors_CACHE_DIR = Path.home() / ".dashboard" / "contributors_cache"
 
 
 def _cache_path(org: str) -> Path:
-    _CONTRIBUTERS_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    return _CONTRIBUTERS_CACHE_DIR / f"Contributers_cache_{org}.json"
+    _contributors_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    return _contributors_CACHE_DIR / f"contributors_cache_{org}.json"
 
 
-def _load_contributers_cache(org: str) -> dict[str, dict]:
-    """Load the contributers cache for an org from disk.
+def _load_contributors_cache(org: str) -> dict[str, dict]:
+    """Load the contributors cache for an org from disk.
 
     Returns:
         Mapping of repo name to
-        ``{"contributers": list[str], "cached_at": ISO str}``
+        ``{"contributors": list[str], "cached_at": ISO str}``
     """
     path = _cache_path(org)
     if not path.exists():
@@ -37,22 +37,22 @@ def _load_contributers_cache(org: str) -> dict[str, dict]:
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError) as exc:
-        logger.warning("Could not read contributers cache: %s", exc)
+        logger.warning("Could not read contributors cache: %s", exc)
         return {}
 
 
-def _save_contributers_cache(
+def _save_contributors_cache(
     org: str, cache: dict[str, dict]
 ) -> None:
-    """Persist the contributers cache for an org to disk."""
+    """Persist the contributors cache for an org to disk."""
     path = _cache_path(org)
     try:
         path.write_text(
             json.dumps(cache, indent=2), encoding="utf-8"
         )
-        logger.debug("contributers cache saved to %s", path)
+        logger.debug("contributors cache saved to %s", path)
     except OSError as exc:
-        logger.warning("Could not save contributers cache: %s", exc)
+        logger.warning("Could not save contributors cache: %s", exc)
 
 
 def _parse_cached_at(entry: dict) -> str | None:
@@ -67,13 +67,13 @@ def _parse_cached_at(entry: dict) -> str | None:
         return None
 
 
-def _count_contributers_via_commits(
+def _count_contributors_via_commits(
     client: GitHubClient,
     org: str,
     repo_name: str,
     since: str | None = None,
 ) -> set[str]:
-    """Collect unique contributers from default branch commit history.
+    """Collect unique contributors from default branch commit history.
 
     Iterates all commits on the default branch via GraphQL and collects
     distinct authors by GitHub login.  Uses ``authors(first: 100)`` to
@@ -144,7 +144,7 @@ def _count_contributers_via_commits(
 
         if not isinstance(result, dict):
             logger.warning(
-                "Invalid GraphQL response while fetching contributers "
+                "Invalid GraphQL response while fetching contributors "
                 "for %s/%s; expected dict but got %s",
                 org,
                 repo_name,
@@ -184,7 +184,7 @@ def _count_contributers_via_commits(
     return unique_authors
 
 
-def _fetch_all_contributers(
+def _fetch_all_contributors(
     client: GitHubClient,
     org: str,
     repos: list[dict[str, Any]],
@@ -211,30 +211,30 @@ def _fetch_all_contributers(
     now = datetime.now(tz=timezone.utc).isoformat()
 
     logger.info(
-        "Fetching contributers for %d repositories", len(repos)
+        "Fetching contributors for %d repositories", len(repos)
     )
 
     for repo in repos:
         repo_name = repo["name"]
         entry = cache.get(repo_name, {})
         since = _parse_cached_at(entry)
-        known_contributers: set[str] = set(entry.get("contributers", []))
+        known_contributors: set[str] = set(entry.get("contributors", []))
 
         if since:
             logger.debug("%s: fetching commits since %s", repo_name, since)
         else:
             logger.debug("%s: fetching full commit history", repo_name)
 
-        new_Contributers = _count_Contributers_via_commits(
+        new_contributors = _count_contributors_via_commits(
             client, org, repo_name, since=since
         )
-        all_contributers = known_contributers | new_Contributers
+        all_contributors = known_contributors | new_contributors
         cache[repo_name] = {
-            "contributers": sorted(all_contributers),
+            "contributors": sorted(all_contributors),
             "cached_at": now,
         }
-        counts[repo_name] = len(all_contributers)
-        logger.debug("%s: %d Contributers", repo_name, len(all_Contributers))
+        counts[repo_name] = len(all_contributors)
+        logger.debug("%s: %d contributors", repo_name, len(all_contributors))
 
     return counts
 
@@ -319,11 +319,11 @@ def add_repositories_to_result(
             all_repos.append(repo)
 
     # Fetch contributor counts (cached by repo, refreshed incrementally)
-    cache = _load_contributers_cache(config.organization)
-    contributers_map = _fetch_all_contributers(
+    cache = _load_contributors_cache(config.organization)
+    contributors_map = _fetch_all_contributors(
         client, config.organization, all_repos, cache
     )
-    _save_contributers_cache(config.organization, cache)
+    _save_contributors_cache(config.organization, cache)
 
     # Build repository results
     for repo in all_repos:
@@ -348,7 +348,7 @@ def add_repositories_to_result(
             forks_count=repo.get("forkCount", 0),
             watchers_count=repo.get("watchers", {}).get("totalCount", 0),
             stars_count=repo.get("stargazerCount", 0),
-            contributers_count=contributers_map.get(repo_name, 0),
+            contributors_count=contributors_map.get(repo_name, 0),
             issues_enabled=repo.get("hasIssuesEnabled", False),
             projects_enabled=repo.get("hasProjectsEnabled", False),
             discussions_enabled=repo.get("hasDiscussionsEnabled", False),

@@ -10,7 +10,7 @@ The Dashboard is currently a snapshot of data from the **SWC/GCNU Neuroinformati
 
 ### Metrics and Definitions
 
-`Contributers:` Contributor is an individual who had contributed to the current repository. Metric calculates the current number of Contributers.
+`contributors:` Contributor is an individual who had contributed to the current repository. Metric calculates the current number of contributors.
 
 `Watchers:` The number of users who are tracking a particular repository, receiving notifications regarding its activity.
 

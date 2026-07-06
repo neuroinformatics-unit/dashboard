@@ -32,7 +32,7 @@ class RepositoryResult:
     merged_pull_requests_count: int = 0
     watchers_count: int = 0
     stars_count: int = 0
-    Contributers_count: int = 0
+    contributors_count: int = 0
     total_download_count: int = 0
     monthly_download_count: int = 0
     weekly_download_count: int = 0
