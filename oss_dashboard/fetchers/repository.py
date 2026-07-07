@@ -16,12 +16,12 @@ from oss_dashboard.models import Config, RepositoryResult, Result
 
 logger = logging.getLogger(__name__)
 
-_contributors_CACHE_DIR = Path.home() / ".dashboard" / "contributors_cache"
+_CONTRIBUTORS_CACHE_DIR = Path.home() / ".dashboard" / "contributors_cache"
 
 
 def _cache_path(org: str) -> Path:
-    _contributors_CACHE_DIR.mkdir(parents=True, exist_ok=True)
-    return _contributors_CACHE_DIR / f"contributors_cache_{org}.json"
+    _CONTRIBUTORS_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    return _CONTRIBUTORS_CACHE_DIR / f"contributors_cache_{org}.json"
 
 
 def _load_contributors_cache(org: str) -> dict[str, dict]:
@@ -50,7 +50,7 @@ def _save_contributors_cache(
         path.write_text(
             json.dumps(cache, indent=2), encoding="utf-8"
         )
-        logger.debug("contributors cache saved to %s", path)
+        logger.debug("Contributors cache saved to %s", path)
     except OSError as exc:
         logger.warning("Could not save contributors cache: %s", exc)
 
