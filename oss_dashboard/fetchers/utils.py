@@ -11,6 +11,20 @@ from oss_dashboard.models import Config
 
 
 @lru_cache(maxsize=1)
+def load_package_mappings() -> dict[str, str]:
+    """Load package name overrides/mappings.
+
+    Returns:
+        Dictionary of mappings.
+    """
+    path = Path(__file__).parent.parent / "brainglobe_legacy.json"
+    if path.exists():
+        with open(path) as f:
+            return json.load(f)
+    return {}
+
+
+@lru_cache(maxsize=1)
 def load_excluded_repos(config_dir: str | None = None) -> tuple[str, ...]:
     """Load the list of excluded repositories.
 

@@ -4,5 +4,6 @@
   "cellfinder-core": "cellfinder",
   "cellfinder-napari": "cellfinder",
   "brainreg-segment": "brainglobe-segmentation",
-  "brainreg-napari": "brainreg"
+  "brainreg-napari": "brainreg",
+  "oscar": "oscar-colony"
 }

@@ -14,7 +14,10 @@ from oss_dashboard.constants import (
     PEPY_RATE_LIMIT_REQUESTS,
     PEPY_RATE_LIMIT_SLEEP_SECONDS,
 )
-from oss_dashboard.fetchers.utils import query_repo_names
+from oss_dashboard.fetchers.utils import (
+    load_package_mappings,
+    query_repo_names,
+)
 from oss_dashboard.github_client import GitHubClient
 from oss_dashboard.models import Config, Result
 
@@ -51,10 +54,11 @@ def _query_projects_for_repositories(
     """
     project_results = []
     num_requests = 0
+    pypi_project_overrides = load_package_mappings()
 
     for repo in repositories:
         repo_name = repo["name"]
-        project_name = "oscar-colony" if repo_name == "oscar" else repo_name
+        project_name = pypi_project_overrides.get(repo_name, repo_name)
         retries = PEPY_MAX_RETRIES
 
         while retries > 0:
