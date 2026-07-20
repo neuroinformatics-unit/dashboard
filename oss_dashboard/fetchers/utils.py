@@ -11,13 +11,13 @@ from oss_dashboard.models import Config
 
 
 @lru_cache(maxsize=1)
-def load_package_mappings() -> dict[str, str]:
-    """Load package name overrides/mappings.
+def load_pypi_aliases() -> dict[str, str]:
+    """Load pypi aliases.
 
     Returns:
-        Dictionary of mappings.
+        Dictionary of pypi aliases.
     """
-    path = Path(__file__).parent.parent / "brainglobe_legacy.json"
+    path = Path(__file__).parent.parent / "pypi_aliases.json"
     if path.exists():
         with open(path) as f:
             return json.load(f)

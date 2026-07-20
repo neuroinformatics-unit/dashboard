@@ -54,11 +54,11 @@ def _query_projects_for_repositories(
     """
     project_results = []
     num_requests = 0
-    pypi_project_overrides = load_package_mappings()
+    aliases = load_pypi_aliases()
 
     for repo in repositories:
         repo_name = repo["name"]
-        project_name = pypi_project_overrides.get(repo_name, repo_name)
+        project_name = aliases.get(repo_name, repo_name)
         retries = PEPY_MAX_RETRIES
 
         while retries > 0:
