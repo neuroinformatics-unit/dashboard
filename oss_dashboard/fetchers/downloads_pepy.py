@@ -15,7 +15,7 @@ from oss_dashboard.constants import (
     PEPY_RATE_LIMIT_SLEEP_SECONDS,
 )
 from oss_dashboard.fetchers.utils import (
-    load_package_mappings,
+    load_pypi_aliases,
     query_repo_names,
 )
 from oss_dashboard.github_client import GitHubClient
