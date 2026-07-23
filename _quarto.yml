@@ -9,6 +9,10 @@ website:
   favicon: /img/logo_niu_light.png
   site-url: "https://dashboard.neuroinformatics.dev"
   navbar:
+    right:
+      - href: https://github.com/neuroinformatics-unit/dashboard
+        text: GitHub
+        target: _blank
     left:
       - href: index.qmd
         text: Dashboard
