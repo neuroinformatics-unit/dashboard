@@ -11,7 +11,7 @@ website:
   navbar:
     right:
       - href: https://github.com/neuroinformatics-unit/dashboard
-        text: GitHub
+        icon: github
         target: _blank
     left:
       - href: index.qmd
