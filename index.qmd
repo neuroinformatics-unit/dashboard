@@ -4,6 +4,22 @@ format: dashboard
 ---
 ```{=html}
 <script>
+// DataTables (dt_for_itables) gates all of its dark styling on `html.dark`,
+// while Quarto only sets `body.quarto-dark`. Mirror the flag onto <html> so
+// the DataTables dark theme follows Quarto's light/dark toggle.
+(() => {
+  const sync = () =>
+    document.documentElement.classList.toggle(
+      "dark",
+      document.body.classList.contains("quarto-dark")
+    );
+  sync();
+  new MutationObserver(sync).observe(document.body, {
+    attributes: true,
+    attributeFilter: ["class"],
+  });
+})();
+
 document.addEventListener("DOMContentLoaded", () => {
   if (!window.jQuery || !jQuery.fn || !jQuery.fn.dataTable) return;
   const fix = () => {
