@@ -8,11 +8,10 @@ body.quarto-dark .nav-tabs .nav-link {
     color: #FFFFFF;
 }
 
-body.quarto-dark table.dataTable thead tr>.dtfc-fixed-start,
-body.quarto-dark table.dataTable thead tr>.dtfc-fixed-end,
-body.quarto-dark table.dataTable tfoot tr>.dtfc-fixed-start,
-body.quarto-dark table.dataTable tfoot tr>.dtfc-fixed-end,
-body.quarto-dark table.dataTable tbody tr>.dtfc-fixed-start,
-body.quarto-dark table.dataTable tbody tr>.dtfc-fixed-end {
-    background-color: #1E1E1E;
+body.quarto-dark {
+    --dt-html-background: #1E1E1E;
+    --itables-dark-color: #FFFFFF;
+    --dtfc_background: #1E1E1E;
+    --dtfc-thead-cell_background: #1E1E1E;
+    --dtfc-tbody-cell_background: #1E1E1E;
 }
