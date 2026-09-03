@@ -25,5 +25,10 @@
   "swc-slack",
   "DataSquash",
   "osss-python-prep",
-  "zebras-stitching"
+  "zebras-stitching",
+  "course_ephys_osss",
+  "ephys-pipeline-planning",
+  "movement-figures",
+  "osss-collaboration-days",
+  "brainglobe-figures"
 ]
