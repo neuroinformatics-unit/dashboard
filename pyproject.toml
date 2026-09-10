@@ -14,7 +14,10 @@ dependencies = [
     "PyYAML",
     "jupyter",
     "pandas",
-    "itables"
+    "itables",
+    "boto3",
+    "pyarrow",
+    "matplotlib"
 ]
 
 license = {text = "BSD-3-Clause"}
@@ -65,6 +68,34 @@ filterwarnings = [
     "error",
 ]
 
+[tool.mypy]
+# None of the third-party dependencies ship type stubs, and the pre-commit
+# mypy hook runs without them installed. Ignore missing imports for those
+# rather than pulling in stub packages.
+[[tool.mypy.overrides]]
+module = [
+    "boto3",
+    "boto3.*",
+    "botocore.*",
+    "dotenv",
+    "dotenv.*",
+    "duckdb",
+    "duckdb.*",
+    "github",
+    "github.*",
+    "matplotlib",
+    "matplotlib.*",
+    "pandas",
+    "pandas.*",
+    "pyarrow",
+    "pyarrow.*",
+    "requests",
+    "requests.*",
+    "yaml",
+    "yaml.*",
+]
+ignore_missing_imports = true
+
 [tool.setuptools_scm]
 
 [tool.check-manifest]
@@ -74,6 +105,16 @@ ignore = [
   "tests/",
   "tests/test_unit/",
   "tests/test_integration/",
+  # Quarto website sources: build inputs for the GitHub Pages site,
+  # not part of the importable package.
+  "*.qmd",
+  "*.scss",
+  "*.example",
+  "_quarto.yml",
+  "_brand.yml",
+  "CNAME",
+  ".nojekyll",
+  "img/*",
 ]
 
 [tool.ruff]

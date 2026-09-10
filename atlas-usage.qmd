@@ -1,0 +1,372 @@
+---
+title: "Atlas usage"
+format:
+  html:
+    page-layout: full
+    toc: true
+execute:
+  echo: false
+  warning: false
+---
+
+How much the **public BrainGlobe atlas data** is being downloaded, derived from
+the S3 server access logs of the atlas bucket. Only successful object
+downloads (`REST.GET.OBJECT`, HTTP 200/206) are counted. Totals are
+cumulative since logging began and grow a little every day.
+
+Each atlas is served as several resources — an annotation volume, one or more
+reference/template images, a terminology, a packaged download, neuroglancer
+state — under separate key namespaces. Only the annotation keys carry the
+canonical atlas name, so the **per-atlas table and charts below count
+annotation-set downloads**; the other resource types are summarised together
+under "by resource type".
+
+The atlas, country and client-tool breakdowns are stored as three independent
+tables (`atlas_usage.parquet`, `atlas_usage_by_country.parquet`,
+`atlas_usage_by_tool.parquet`), so there is no per-atlas country or tool
+split — the country and tool figures cover all downloads.
+
+The **client tool** is inferred from each request's `Referer` and
+`User-Agent`: the browser viewers (neuroglancer, Pinpoint) set a recognisable
+`Referer`; library/CLI clients are told apart by `User-Agent`, with
+`aiobotocore`/`botocore` (i.e. `s3fs` + `zarr`) attributed to
+`brainglobe-atlasapi`.
+
+```{python}
+# | label: load
+from datetime import datetime
+from pathlib import Path
+import json
+
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+import pandas as pd
+
+from oss_dashboard.atlas_logs.constants import (
+    ATLAS_PARQUET_PATH,
+    COUNTRY_PARQUET_PATH,
+    STATE_PATH,
+    TOOL_PARQUET_PATH,
+)
+
+GREEN = "#03A062"
+BLUE = "#4178f3"
+ORANGE = "#EE9040"
+# A mid grey that stays legible on both the light and dark site themes.
+INK = "#888888"
+
+mpl.rcParams.update({
+    "figure.facecolor": "none",
+    "axes.facecolor": "none",
+    "savefig.facecolor": "none",
+    "savefig.transparent": True,
+    "text.color": INK,
+    "axes.labelcolor": INK,
+    "axes.edgecolor": INK,
+    "xtick.color": INK,
+    "ytick.color": INK,
+    "axes.titlecolor": INK,
+    "axes.spines.top": False,
+    "axes.spines.right": False,
+    "font.size": 11,
+})
+
+GB = 1e9
+TB = 1e12
+
+def _read(path, columns):
+    if path.exists():
+        return pd.read_parquet(path)
+    return pd.DataFrame(columns=columns)
+
+
+usage = _read(
+    ATLAS_PARQUET_PATH,
+    ["date", "atlas", "resource", "requests", "bytes_sent"],
+)
+countries = _read(
+    COUNTRY_PARQUET_PATH, ["date", "country", "requests", "bytes_sent"]
+)
+tools = _read(
+    TOOL_PARQUET_PATH, ["date", "tool", "requests", "bytes_sent"]
+)
+has_data = not usage.empty
+
+state = json.loads(STATE_PATH.read_text()) if STATE_PATH.exists() else {}
+updated_at = state.get("updated_at")
+```
+
+```{python}
+# | label: no-data
+# | output: asis
+if not has_data:
+    print(
+        "::: callout-note\n"
+        "No atlas usage data has been collected yet. Run "
+        "`python -m oss_dashboard.atlas_logs` to populate "
+        "`oss_dashboard/data/atlas_usage.parquet`.\n:::"
+    )
+```
+
+```{python}
+# | label: derived
+if has_data:
+    usage["date"] = pd.to_datetime(usage["date"])
+
+    # The per-atlas views use annotation-set downloads only (see intro).
+    annotations = usage[usage["resource"] == "annotation"]
+
+    by_atlas = (
+        annotations.groupby("atlas")
+        .agg(
+            downloads=("requests", "sum"),
+            gb=("bytes_sent", lambda s: s.sum() / GB),
+        )
+        .sort_values("downloads", ascending=False)
+    )
+
+    by_country = (
+        countries.groupby("country")["requests"]
+        .sum()
+        .sort_values(ascending=False)
+    )
+    by_resource = (
+        usage.groupby("resource")["requests"].sum().sort_values(ascending=False)
+    )
+    by_tool = (
+        tools.groupby("tool")["requests"].sum().sort_values(ascending=False)
+    )
+    tool_gb = tools.groupby("tool")["bytes_sent"].sum() / GB
+    by_day = (
+        usage.groupby("date")
+        .agg(downloads=("requests", "sum"), bytes_sent=("bytes_sent", "sum"))
+        .asfreq("D", fill_value=0)
+    )
+    if not tools.empty:
+        tools["date"] = pd.to_datetime(tools["date"])
+        tool_daily = (
+            tools.pivot_table(
+                index="date",
+                columns="tool",
+                values="requests",
+                aggfunc="sum",
+                fill_value=0,
+            )
+            .asfreq("D", fill_value=0)
+            .reindex(columns=by_tool.index)
+        )
+    else:
+        tool_daily = pd.DataFrame()
+
+    total_downloads = int(usage["requests"].sum())
+    total_bytes = int(usage["bytes_sent"].sum())
+    annotation_downloads = int(annotations["requests"].sum())
+    n_atlases = int((by_atlas.index != "unclassified").sum())
+    n_countries = int((by_country.index != "??").sum())
+    span = f"{by_day.index.min():%d %b %Y} – {by_day.index.max():%d %b %Y}"
+    n_days = by_day.shape[0]
+```
+
+```{python}
+# | label: stat-cards
+# | output: asis
+if has_data:
+    cards = [
+        ("Downloads", f"{total_downloads:,}"),
+        ("Data served", f"{total_bytes / TB:.2f} TB"),
+        ("Atlases", f"{n_atlases}"),
+        ("Annotation downloads", f"{annotation_downloads:,}"),
+        ("Countries", f"{n_countries}"),
+        ("Days covered", f"{n_days}"),
+        ("Window", span),
+    ]
+    if not by_tool.empty:
+        share = by_tool.iloc[0] / by_tool.sum() * 100
+        cards.insert(
+            4, ("Top client", f"{by_tool.index[0]} ({share:.0f}%)")
+        )
+    tiles = "".join(
+        f'<div style="flex:1 1 8rem;border:1px solid {INK}55;border-radius:.5rem;'
+        f'padding:.75rem 1rem">'
+        f'<div style="font-size:.8rem;color:{INK}">{label}</div>'
+        f'<div style="font-size:1.5rem;font-weight:600">{value}</div></div>'
+        for label, value in cards
+    )
+    print(
+        f'<div style="display:flex;flex-wrap:wrap;gap:.75rem;margin:1rem 0">'
+        f"{tiles}</div>"
+    )
+    if updated_at:
+        stamp = datetime.fromisoformat(updated_at).strftime(
+            "%A, %d %B %Y %H:%M UTC"
+        )
+        print(f"\n*Data last updated: {stamp}*\n")
+```
+
+## Downloads by atlas
+
+```{python}
+# | label: table
+if has_data:
+    import itables
+
+    table = by_atlas.reset_index()
+    table.columns = ["Atlas", "Downloads", "Data served (GB)"]
+    table["Data served (GB)"] = table["Data served (GB)"].round(1)
+    table["Share of downloads"] = (
+        table["Downloads"] / annotation_downloads * 100
+    ).round(1).astype(str) + "%"
+    itables.show(
+        table,
+        classes="display nowrap cell-border",
+        columnDefs=[{"className": "dt-left", "targets": "_all"}],
+        order=[[1, "desc"]],
+        paging=False,
+        scrollX=True,
+    )
+```
+
+```{python}
+# | label: atlas-bars
+# | fig-width: 9
+# | fig-height: 7
+if has_data:
+    top = by_atlas[by_atlas.index != "unclassified"].head(15)
+    fig, axes = plt.subplots(1, 2, figsize=(11, 6))
+
+    top["downloads"].sort_values().plot.barh(ax=axes[0], color=GREEN)
+    axes[0].set_title("Downloads by atlas (top 15)")
+    axes[0].set_xlabel("object downloads")
+    axes[0].set_ylabel("")
+
+    top["gb"].sort_values().plot.barh(ax=axes[1], color=BLUE)
+    axes[1].set_title("Data served by atlas (top 15)")
+    axes[1].set_xlabel("GB")
+    axes[1].set_ylabel("")
+
+    fig.tight_layout()
+    plt.show()
+```
+
+## Over time
+
+```{python}
+# | label: timeseries
+# | fig-width: 9
+# | fig-height: 6
+if has_data:
+    fig, axes = plt.subplots(2, 1, figsize=(10, 6), sharex=True)
+
+    axes[0].plot(
+        by_day.index, by_day["downloads"], color=GREEN, alpha=0.35, lw=1
+    )
+    axes[0].plot(
+        by_day.index,
+        by_day["downloads"].rolling(7, min_periods=1).mean(),
+        color=GREEN,
+        lw=2,
+        label="7-day mean",
+    )
+    axes[0].set_ylabel("downloads / day")
+    axes[0].legend(frameon=False)
+
+    axes[1].fill_between(
+        by_day.index, by_day["bytes_sent"] / GB, color=BLUE, alpha=0.5
+    )
+    axes[1].set_ylabel("GB served / day")
+
+    fig.tight_layout()
+    plt.show()
+```
+
+## By country and resource
+
+```{python}
+# | label: country-resource
+# | fig-width: 9
+# | fig-height: 6
+if has_data:
+    fig, axes = plt.subplots(1, 2, figsize=(11, 5))
+
+    named = by_country[by_country.index != "??"].head(15)
+    if not named.empty:
+        named.sort_values().plot.barh(ax=axes[0], color=ORANGE)
+    axes[0].set_title("Downloads by country (top 15)")
+    axes[0].set_xlabel("object downloads")
+    axes[0].set_ylabel("")
+
+    by_resource.sort_values().plot.barh(ax=axes[1], color=GREEN)
+    axes[1].set_title("Downloads by resource type")
+    axes[1].set_xlabel("object downloads")
+    axes[1].set_ylabel("")
+
+    fig.tight_layout()
+    plt.show()
+
+    country_total = int(by_country.sum())
+    unresolved = int(by_country.get("??", 0))
+    if unresolved and country_total:
+        pct = unresolved / country_total * 100
+        print(
+            f"\n*{unresolved:,} downloads ({pct:.1f}%) came from IPs that "
+            f"could not be resolved to a country.*"
+        )
+```
+
+## By client tool
+
+```{python}
+# | label: tool-bars
+# | fig-width: 9
+# | fig-height: 4
+if has_data and not by_tool.empty:
+    fig, axes = plt.subplots(1, 2, figsize=(11, 4))
+
+    by_tool.sort_values().plot.barh(ax=axes[0], color=GREEN)
+    axes[0].set_title("Downloads by client tool")
+    axes[0].set_xlabel("object downloads")
+    axes[0].set_ylabel("")
+
+    tool_gb.reindex(by_tool.index).sort_values().plot.barh(
+        ax=axes[1], color=BLUE
+    )
+    axes[1].set_title("Data served by client tool")
+    axes[1].set_xlabel("GB")
+    axes[1].set_ylabel("")
+
+    fig.tight_layout()
+    plt.show()
+```
+
+```{python}
+# | label: tool-over-time
+# | fig-width: 9
+# | fig-height: 4
+if has_data and not tool_daily.empty and tool_daily.shape[0] > 1:
+    top = tool_daily[tool_daily.sum().sort_values(ascending=False).index[:6]]
+    palette = [GREEN, BLUE, ORANGE, "#7B61FF", "#E0529C", INK]
+    ax = top.plot.area(
+        figsize=(10, 4), color=palette[: top.shape[1]], alpha=0.85, lw=0
+    )
+    ax.set_title("Downloads per day by client tool (top 6)")
+    ax.set_xlabel("")
+    ax.set_ylabel("downloads / day")
+    ax.legend(frameon=False, fontsize=9, loc="upper left")
+    plt.tight_layout()
+    plt.show()
+```
+
+```{python}
+# | label: tool-table
+# | output: asis
+if has_data and not by_tool.empty:
+    total = by_tool.sum()
+    lines = ["| Client tool | Downloads | Share | Data served (GB) |",
+             "| --- | --: | --: | --: |"]
+    for name, downloads in by_tool.items():
+        lines.append(
+            f"| {name} | {downloads:,} | {downloads / total * 100:.1f}% "
+            f"| {tool_gb.get(name, 0):,.1f} |"
+        )
+    print("\n".join(lines))
+```
