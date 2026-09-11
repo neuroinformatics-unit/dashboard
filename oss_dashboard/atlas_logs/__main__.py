@@ -9,6 +9,7 @@ from pathlib import Path
 import yaml
 from dotenv import load_dotenv
 
+from oss_dashboard.atlas_logs.constants import S3_MAX_WORKERS
 from oss_dashboard.atlas_logs.pipeline import run
 
 
@@ -45,6 +46,15 @@ def main() -> None:
         help="Stop after this many log objects (useful for testing).",
     )
     parser.add_argument(
+        "--workers",
+        type=int,
+        default=S3_MAX_WORKERS,
+        help=(
+            "Parallel S3 downloads (default: %(default)s). Access logs are "
+            "many small objects, so fetching them is latency-bound."
+        ),
+    )
+    parser.add_argument(
         "--verbose", "-v", action="store_true", help="Debug logging."
     )
     args = parser.parse_args()
@@ -73,6 +83,7 @@ def main() -> None:
         local_dir=args.local_dir,
         full_rebuild=args.full_rebuild,
         max_objects=args.max_objects,
+        max_workers=args.workers,
     )
 
     print(

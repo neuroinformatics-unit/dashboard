@@ -11,8 +11,11 @@ logs whose key sorts *below* the cursor are the only blind spot; a
 from __future__ import annotations
 
 import gzip
+import itertools
 import logging
+from collections import deque
 from collections.abc import Iterator
+from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +26,7 @@ from oss_dashboard.atlas_logs.constants import (
     COUNTRY_PARQUET_PATH,
     DOWNLOAD_OPERATIONS,
     OK_STATUSES,
+    S3_MAX_WORKERS,
     STATE_PATH,
     TOOL_KEY,
     TOOL_PARQUET_PATH,
@@ -77,25 +81,57 @@ def iter_s3_objects(
     prefix: str,
     start_after: str,
     limit: int | None,
+    max_workers: int = S3_MAX_WORKERS,
 ) -> ObjectSource:
-    """Yield ``(key, text)`` for S3 objects listed after ``start_after``."""
+    """Yield ``(key, text)`` for S3 objects listed after ``start_after``.
+
+    Access logs are many small objects, so a serial GET-per-object is
+    latency-bound (~4 objects/s). The bodies are therefore fetched through a
+    thread pool. Only a bounded window of downloads is ever in flight, so
+    neither the key listing nor the bodies are fully materialised in memory,
+    and results are still yielded in key order.
+    """
     import boto3
+    from botocore.config import Config as BotoConfig
 
-    client = boto3.client("s3", region_name=region)
-    paginator = client.get_paginator("list_objects_v2")
-    kwargs = {"Bucket": bucket, "Prefix": prefix}
-    if start_after:
-        kwargs["StartAfter"] = start_after
+    # boto3 clients are thread-safe for API calls, but the default connection
+    # pool (10) would throttle the workers, so size it to match.
+    client = boto3.client(
+        "s3",
+        region_name=region,
+        config=BotoConfig(
+            max_pool_connections=max_workers,
+            retries={"max_attempts": 5, "mode": "standard"},
+        ),
+    )
 
-    count = 0
-    for page in paginator.paginate(**kwargs):
-        for obj in page.get("Contents", []):
-            key = obj["Key"]
-            body = client.get_object(Bucket=bucket, Key=key)["Body"].read()
-            yield key, _decode(body)
-            count += 1
-            if limit is not None and count >= limit:
-                return
+    def iter_keys() -> Iterator[str]:
+        paginator = client.get_paginator("list_objects_v2")
+        kwargs: dict[str, Any] = {"Bucket": bucket, "Prefix": prefix}
+        if start_after:
+            kwargs["StartAfter"] = start_after
+        for page in paginator.paginate(**kwargs):
+            for obj in page.get("Contents", []):
+                yield obj["Key"]
+
+    def fetch(key: str) -> tuple[str, str]:
+        body = client.get_object(Bucket=bucket, Key=key)["Body"].read()
+        return key, _decode(body)
+
+    keys = iter_keys()
+    if limit is not None:
+        keys = itertools.islice(keys, limit)
+
+    with ThreadPoolExecutor(max_workers=max_workers) as pool:
+        in_flight: deque[Future[tuple[str, str]]] = deque(
+            pool.submit(fetch, key)
+            for key in itertools.islice(keys, max_workers * 2)
+        )
+        while in_flight:
+            yield in_flight.popleft().result()
+            next_key = next(keys, None)
+            if next_key is not None:
+                in_flight.append(pool.submit(fetch, next_key))
 
 
 def _bump(counts: Counts, key: tuple[str, ...], nbytes: int) -> None:
@@ -154,6 +190,7 @@ def run(
     local_dir: Path | None = None,
     full_rebuild: bool = False,
     max_objects: int | None = None,
+    max_workers: int = S3_MAX_WORKERS,
     atlas_path: Path = ATLAS_PARQUET_PATH,
     country_path: Path = COUNTRY_PARQUET_PATH,
     tool_path: Path = TOOL_PARQUET_PATH,
@@ -186,7 +223,7 @@ def run(
         source = iter_local_objects(Path(local_dir), start_after, max_objects)
     else:
         source = iter_s3_objects(
-            bucket, region, prefix, start_after, max_objects
+            bucket, region, prefix, start_after, max_objects, max_workers
         )
 
     atlas_counts: Counts = {}

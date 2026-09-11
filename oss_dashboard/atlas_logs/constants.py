@@ -21,6 +21,11 @@ SUMMARY_MEASURES = ["requests", "bytes_sent"]
 DOWNLOAD_OPERATIONS = frozenset({"REST.GET.OBJECT"})
 OK_STATUSES = frozenset({200, 206})
 
+# Access logs arrive as a very large number of small objects, so fetching
+# them is latency- rather than bandwidth-bound: one GET at a time runs at
+# roughly 4 objects/s. Fetch them through a thread pool instead.
+S3_MAX_WORKERS = 32
+
 # Free, CC0/MIT IP->country ranges (no account or key required).
 GEOIP_CACHE_DIR = Path.home() / ".dashboard" / "geoip"
 GEOIP_MAX_AGE_DAYS = 30
