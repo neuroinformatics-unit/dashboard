@@ -15,7 +15,13 @@ import re
 from dataclasses import dataclass
 
 # Everything up to and including ``bytes_sent`` has no quoted-space
-# ambiguity except ``request_uri``, which we match as a whole "..." token.
+# ambiguity except ``request_uri``, which is normally a whole "..." token -
+# except for a handful of internal pseudo-operations (observed:
+# REST.COPY.OBJECT_GET/_PUT, used for x-amz-copy-source permission checks)
+# that have no HTTP request at all, so AWS writes a bare "-" instead of a
+# quoted string. Accept either. These are never REST.GET.OBJECT, so they
+# don't affect download counts either way - this is about not
+# mis-classifying a valid log line as unparsable.
 # The referer/user-agent tail is optional: if a weird line does not have it
 # we still keep the row (with referer/user_agent unknown) rather than drop it.
 _LINE_RE = re.compile(
@@ -27,7 +33,7 @@ _LINE_RE = re.compile(
     r"(?P<request_id>\S+) "
     r"(?P<operation>\S+) "
     r"(?P<key>\S+) "
-    r'"[^"]*" '  # request-uri
+    r'(?:"[^"]*"|-) '  # request-uri, or "-" when there was no HTTP request
     r"(?P<http_status>\S+) "
     r"\S+ "  # error code
     r"(?P<bytes_sent>\S+)"

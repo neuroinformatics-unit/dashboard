@@ -87,6 +87,24 @@ def test_parse_line_without_referer_tail_still_parses():
     assert record.user_agent == "-"
 
 
+def test_parse_line_handles_bare_dash_request_uri():
+    # Internal pseudo-operations (e.g. REST.COPY.OBJECT_GET/_PUT, used for
+    # x-amz-copy-source permission checks) have no HTTP request at all, so
+    # AWS writes a bare "-" instead of a quoted request-uri. Seen for real
+    # against brainglobe-logs on 2026-09-04 (a bulk-scraper role probing
+    # copy permissions, all 403s) - never for REST.GET.OBJECT.
+    line = (
+        "OWNER brainglobe [04/Sep/2026:00:20:15 +0000] 34.221.23.144 "
+        "arn:aws:sts::093240468649:assumed-role/some-role/session "
+        "REQ REST.COPY.OBJECT_GET atlas/x - 403 AccessDenied - - - -"
+    )
+    record = parse_line(line)
+    assert record is not None
+    assert record.operation == "REST.COPY.OBJECT_GET"
+    assert record.http_status == 403
+    assert record.bytes_sent == 0
+
+
 def test_parse_line_handles_missing_values():
     record = parse_line(_line(status="-", bytes_="-"))
     assert record is not None

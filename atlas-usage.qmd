@@ -42,6 +42,7 @@ import matplotlib as mpl
 import matplotlib.pyplot as plt
 import pandas as pd
 
+from oss_dashboard.atlas_logs.atlas_names import display_name
 from oss_dashboard.atlas_logs.constants import (
     ATLAS_PARQUET_PATH,
     COUNTRY_PARQUET_PATH,
@@ -124,6 +125,9 @@ if has_data:
         )
         .sort_values("downloads", ascending=False)
     )
+    # Human-readable name for display; the index stays the raw key derived
+    # by classify_key (used to filter "unclassified" etc).
+    by_atlas["name"] = [display_name(atlas) for atlas in by_atlas.index]
 
     by_country = (
         countries.groupby("country")["requests"]
@@ -210,7 +214,7 @@ if has_data:
 if has_data:
     import itables
 
-    table = by_atlas.reset_index()
+    table = by_atlas.reset_index()[["name", "downloads", "gb"]]
     table.columns = ["Atlas", "Downloads", "Data served (GB)"]
     table["Data served (GB)"] = table["Data served (GB)"].round(1)
     table["Share of downloads"] = (
@@ -231,7 +235,11 @@ if has_data:
 # | fig-width: 9
 # | fig-height: 7
 if has_data:
-    top = by_atlas[by_atlas.index != "unclassified"].head(15)
+    top = (
+        by_atlas[by_atlas.index != "unclassified"]
+        .head(15)
+        .set_index("name")
+    )
     fig, axes = plt.subplots(1, 2, figsize=(11, 6))
 
     top["downloads"].sort_values().plot.barh(ax=axes[0], color=GREEN)
