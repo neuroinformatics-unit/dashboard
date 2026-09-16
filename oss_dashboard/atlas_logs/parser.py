@@ -180,6 +180,24 @@ def classify_client(referer: str, user_agent: str) -> str:
     return "other"
 
 
+def _is_zarr_group_manifest(parts: list[str]) -> bool:
+    """True for the *group-root* ``zarr.json`` of an OME-Zarr store.
+
+    A client fetches this once per store it opens, regardless of how much
+    of the array it goes on to read - unlike the per-resolution-level
+    ``.../s0/zarr.json`` or nested-array ``.../annotation_values/zarr.json``
+    metadata files, and unlike the (many, size-dependent) chunk files under
+    ``.../s0/c/...``. That makes it a much cleaner "was this store opened"
+    signal than raw request counts, which are skewed by array size and how
+    much of it a given client actually reads.
+    """
+    return (
+        len(parts) >= 2
+        and parts[-1] == "zarr.json"
+        and parts[-2].endswith(".ome.zarr")
+    )
+
+
 def classify_key(key: str) -> tuple[str, str]:
     """Map an S3 object key to ``(atlas, resource)``.
 
@@ -189,10 +207,17 @@ def classify_key(key: str) -> tuple[str, str]:
     each under its own key namespace - only ``annotation`` names use the
     canonical atlas identifier, so the dashboard counts atlases from those.
 
+    Within a Zarr-backed resource, the group-root ``zarr.json`` fetch is
+    further split out as ``"<resource>-manifest"`` (see
+    ``_is_zarr_group_manifest``) - one such fetch per store "open" makes it
+    a better popularity proxy than raw (chunk-count-skewed) request totals.
+
     Examples (key -> result)::
 
         atlas/annotation-sets/allen_mouse-annotation/3_0/a
             -> ("allen_mouse", "annotation")
+        atlas/annotation-sets/allen_mouse-annotation/3_0/annotations.ome.zarr/zarr.json
+            -> ("allen_mouse", "annotation-manifest")
         atlas/templates/allen-adult-mouse-stpt-template/3_0/t
             -> ("allen_adult_mouse_stpt", "template")
         atlas/atlases/allen_mouse_25um.tar.gz
@@ -225,6 +250,8 @@ def classify_key(key: str) -> tuple[str, str]:
         for suffix, resource in _RESOURCE_SUFFIXES.items():
             if name.endswith(suffix):
                 atlas = name[: -len(suffix)].replace("-", "_")
+                if _is_zarr_group_manifest(parts):
+                    resource = f"{resource}-manifest"
                 return atlas, resource
 
         return name.replace("-", "_"), collection

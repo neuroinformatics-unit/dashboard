@@ -8,7 +8,9 @@ import pytest
 from oss_dashboard.atlas_logs.constants import (
     ATLAS_KEY,
     COUNTRY_KEY,
+    COUNTRY_MEASURES,
     TOOL_KEY,
+    TOOL_MEASURES,
 )
 from oss_dashboard.atlas_logs.geoip import CountryLookup
 from oss_dashboard.atlas_logs.parser import (
@@ -138,6 +140,30 @@ def test_event_date():
             ("allen_mouse", "terminology"),
         ),
         (
+            "atlas/annotation-sets/allen_mouse-annotation/3_0/"
+            "annotations.ome.zarr/zarr.json",
+            ("allen_mouse", "annotation-manifest"),
+        ),
+        (
+            # A compressed variant of the same store still collapses onto
+            # the same atlas + "-manifest" resource.
+            "atlas/annotation-sets/allen_mouse-annotation/3_0/"
+            "annotations_compressed.ome.zarr/zarr.json",
+            ("allen_mouse", "annotation-manifest"),
+        ),
+        (
+            # Per-resolution-level metadata is not the group-root manifest.
+            "atlas/annotation-sets/allen_mouse-annotation/3_0/"
+            "annotations.ome.zarr/s0/zarr.json",
+            ("allen_mouse", "annotation"),
+        ),
+        (
+            # Nor is a nested array's own group metadata.
+            "atlas/annotation-sets/allen_mouse-annotation/3_0/"
+            "annotations.ome.zarr/annotation_values/zarr.json",
+            ("allen_mouse", "annotation"),
+        ),
+        (
             "atlas/atlases/allen_mouse_25um.tar.gz",
             ("allen_mouse", "packaged-atlas"),
         ),
@@ -224,6 +250,16 @@ def test_accumulate_counts_only_successful_downloads():
                 user_agent="aiobotocore/3.9.0 lang/python#3.12",
             ),
             _line(
+                # The group-root manifest fetch for the same store/tool/
+                # country - counted separately in atlas_counts (its own
+                # "annotation-manifest" resource row) and additionally
+                # tallied in country/tool's manifest_requests measure.
+                key="atlas/annotation-sets/allen_mouse-annotation/3_0/"
+                "annotations.ome.zarr/zarr.json",
+                bytes_="20",
+                user_agent="aiobotocore/3.9.0 lang/python#3.12",
+            ),
+            _line(
                 key="atlas/annotation-sets/allen_mouse-annotation/3_0/b",
                 bytes_="50",
                 referer="https://pinpoint.allenneuraldynamics.org/",
@@ -241,16 +277,18 @@ def test_accumulate_counts_only_successful_downloads():
         text, atlas_counts, country_counts, tool_counts, lookup
     )
 
-    assert parsed == 4
+    assert parsed == 5
     assert skipped == 1
     # the three breakdowns are independent, not crossed
     assert atlas_counts == {
-        ("2026-08-12", "allen_mouse", "annotation"): [2, 150]
+        ("2026-08-12", "allen_mouse", "annotation"): [2, 150],
+        ("2026-08-12", "allen_mouse", "annotation-manifest"): [1, 20],
     }
-    assert country_counts == {("2026-08-12", "US"): [2, 150]}
+    # requests, bytes_sent, manifest_requests
+    assert country_counts == {("2026-08-12", "US"): [3, 170, 1]}
     assert tool_counts == {
-        ("2026-08-12", "brainglobe-atlasapi"): [1, 100],
-        ("2026-08-12", "pinpoint"): [1, 50],
+        ("2026-08-12", "brainglobe-atlasapi"): [2, 120, 1],
+        ("2026-08-12", "pinpoint"): [1, 50, 0],
     }
 
 
@@ -325,22 +363,31 @@ def test_run_over_local_dir(tmp_path):
     assert "country" not in atlas.columns
     assert atlas["bytes_sent"].sum() == 307
 
-    country = load_summary(country_path, COUNTRY_KEY)
+    country = load_summary(country_path, COUNTRY_KEY, COUNTRY_MEASURES)
     assert list(country.columns) == [
         "date",
         "country",
         "requests",
         "bytes_sent",
+        "manifest_requests",
     ]
     assert country["requests"].sum() == 4  # every download, once
     assert set(country["country"]) == {"US"}
+    assert country["manifest_requests"].sum() == 0  # none of these are zarr.json
 
-    tool = load_summary(tool_path, TOOL_KEY)
-    assert list(tool.columns) == ["date", "tool", "requests", "bytes_sent"]
+    tool = load_summary(tool_path, TOOL_KEY, TOOL_MEASURES)
+    assert list(tool.columns) == [
+        "date",
+        "tool",
+        "requests",
+        "bytes_sent",
+        "manifest_requests",
+    ]
     assert dict(zip(tool["tool"], tool["requests"])) == {
         "brainglobe-atlasapi": 3,
         "neuroglancer": 1,
     }
+    assert tool["manifest_requests"].sum() == 0
 
     saved_state = load_state(state)
     assert saved_state["last_key"] == "2026-08-12-01-00-00-BBBB"
@@ -398,10 +445,11 @@ def test_load_summary_missing_file_is_empty(tmp_path):
     ]
     assert isinstance(atlas, pd.DataFrame)
 
-    country = load_summary(tmp_path / "nope2.parquet", COUNTRY_KEY)
+    country = load_summary(tmp_path / "nope2.parquet", COUNTRY_KEY, COUNTRY_MEASURES)
     assert list(country.columns) == [
         "date",
         "country",
         "requests",
         "bytes_sent",
+        "manifest_requests",
     ]

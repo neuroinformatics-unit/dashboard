@@ -16,6 +16,14 @@ ATLAS_KEY = ["date", "atlas", "resource"]
 COUNTRY_KEY = ["date", "country"]
 TOOL_KEY = ["date", "tool"]
 SUMMARY_MEASURES = ["requests", "bytes_sent"]
+# The atlas table already gets a manifest/non-manifest split for free via
+# its "<type>-manifest" resource rows, so a "manifest_requests" column
+# there would just duplicate that. Country and tool have no resource
+# dimension at all, so they carry it as an extra measure instead - a
+# resource-agnostic count of "of this entity's requests, how many were a
+# zarr.json group-root fetch" (see ``parser._is_zarr_group_manifest``).
+COUNTRY_MEASURES = [*SUMMARY_MEASURES, "manifest_requests"]
+TOOL_MEASURES = [*SUMMARY_MEASURES, "manifest_requests"]
 
 # Only object downloads count towards "requests"/"bytes served".
 DOWNLOAD_OPERATIONS = frozenset({"REST.GET.OBJECT"})

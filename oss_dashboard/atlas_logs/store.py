@@ -23,22 +23,27 @@ from oss_dashboard.atlas_logs.constants import (
 logger = logging.getLogger(__name__)
 
 # A run accumulates counts keyed by a tuple of the grouping-key values,
-# with ``[requests, bytes_sent]`` as the value.
+# with one value per measure (e.g. ``[requests, bytes_sent]``).
 Counts = dict[tuple[str, ...], list[int]]
 
 
-def empty_summary(key: list[str]) -> pd.DataFrame:
+def empty_summary(
+    key: list[str], measures: list[str] | None = None
+) -> pd.DataFrame:
     """An empty summary frame with the given key columns plus measures."""
+    measures = measures if measures is not None else SUMMARY_MEASURES
     frame = pd.DataFrame({name: pd.Series(dtype="object") for name in key})
-    for name in SUMMARY_MEASURES:
+    for name in measures:
         frame[name] = pd.Series(dtype="int64")
     return frame
 
 
-def load_summary(path: Path, key: list[str]) -> pd.DataFrame:
+def load_summary(
+    path: Path, key: list[str], measures: list[str] | None = None
+) -> pd.DataFrame:
     """Load a committed summary, or an empty frame if it does not exist."""
     if not path.exists():
-        return empty_summary(key)
+        return empty_summary(key, measures)
     return pd.read_parquet(path)
 
 
@@ -50,27 +55,34 @@ def load_state(path: Path = STATE_PATH) -> dict[str, Any]:
         return json.load(handle)
 
 
-def counts_to_frame(counts: Counts, key: list[str]) -> pd.DataFrame:
-    """Turn a ``key-tuple -> [requests, bytes]`` map into a DataFrame."""
+def counts_to_frame(
+    counts: Counts, key: list[str], measures: list[str] | None = None
+) -> pd.DataFrame:
+    """Turn a ``key-tuple -> [measure, ...]`` map into a DataFrame."""
+    measures = measures if measures is not None else SUMMARY_MEASURES
     if not counts:
-        return empty_summary(key)
-    rows = [(*k, measures[0], measures[1]) for k, measures in counts.items()]
-    return pd.DataFrame(rows, columns=key + SUMMARY_MEASURES)
+        return empty_summary(key, measures)
+    rows = [(*k, *values) for k, values in counts.items()]
+    return pd.DataFrame(rows, columns=key + measures)
 
 
 def merge_summary(
-    existing: pd.DataFrame, new_rows: pd.DataFrame, key: list[str]
+    existing: pd.DataFrame,
+    new_rows: pd.DataFrame,
+    key: list[str],
+    measures: list[str] | None = None,
 ) -> pd.DataFrame:
     """Concatenate and re-aggregate so repeated keys are summed."""
+    measures = measures if measures is not None else SUMMARY_MEASURES
     combined = pd.concat([existing, new_rows], ignore_index=True)
     if combined.empty:
-        return empty_summary(key)
+        return empty_summary(key, measures)
     combined = (
-        combined.groupby(key, as_index=False)[SUMMARY_MEASURES]
+        combined.groupby(key, as_index=False)[measures]
         .sum()
         .sort_values(key, ignore_index=True)
     )
-    for name in SUMMARY_MEASURES:
+    for name in measures:
         combined[name] = combined[name].astype("int64")
     return combined
 

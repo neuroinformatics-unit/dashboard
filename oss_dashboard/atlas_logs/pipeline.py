@@ -23,12 +23,14 @@ from oss_dashboard.atlas_logs.constants import (
     ATLAS_KEY,
     ATLAS_PARQUET_PATH,
     COUNTRY_KEY,
+    COUNTRY_MEASURES,
     COUNTRY_PARQUET_PATH,
     DOWNLOAD_OPERATIONS,
     OK_STATUSES,
     S3_MAX_WORKERS,
     STATE_PATH,
     TOOL_KEY,
+    TOOL_MEASURES,
     TOOL_PARQUET_PATH,
 )
 from oss_dashboard.atlas_logs.geoip import CountryLookup, load_country_lookup
@@ -134,10 +136,10 @@ def iter_s3_objects(
                 in_flight.append(pool.submit(fetch, next_key))
 
 
-def _bump(counts: Counts, key: tuple[str, ...], nbytes: int) -> None:
-    bucket = counts.setdefault(key, [0, 0])
-    bucket[0] += 1
-    bucket[1] += nbytes
+def _bump(counts: Counts, key: tuple[str, ...], *values: int) -> None:
+    bucket = counts.setdefault(key, [0] * len(values))
+    for i, value in enumerate(values):
+        bucket[i] += value
 
 
 def accumulate(
@@ -151,7 +153,10 @@ def accumulate(
 
     Keyed by ``(date, atlas, resource)``, ``(date, country)`` and
     ``(date, tool)`` respectively - the breakdowns are kept separate, not
-    crossed. Returns ``(parsed, skipped)``.
+    crossed. The atlas table gets a manifest/non-manifest split for free via
+    its ``"<type>-manifest"`` resource rows; country and tool have no
+    resource dimension, so they carry a ``manifest_requests`` measure
+    instead. Returns ``(parsed, skipped)``.
     """
     parsed = 0
     skipped = 0
@@ -172,12 +177,23 @@ def accumulate(
             continue
 
         atlas, resource = classify_key(record.key)
+        is_manifest = 1 if resource.endswith("-manifest") else 0
         country = country_lookup.lookup(record.remote_ip)
         tool = classify_client(record.referer, record.user_agent)
 
-        _bump(atlas_counts, (record.date, atlas, resource), record.bytes_sent)
-        _bump(country_counts, (record.date, country), record.bytes_sent)
-        _bump(tool_counts, (record.date, tool), record.bytes_sent)
+        _bump(
+            atlas_counts, (record.date, atlas, resource), 1, record.bytes_sent
+        )
+        _bump(
+            country_counts,
+            (record.date, country),
+            1,
+            record.bytes_sent,
+            is_manifest,
+        )
+        _bump(
+            tool_counts, (record.date, tool), 1, record.bytes_sent, is_manifest
+        )
 
     return parsed, skipped
 
@@ -209,10 +225,10 @@ def run(
         missing if full_rebuild else atlas_path, ATLAS_KEY
     )
     country_existing = load_summary(
-        missing if full_rebuild else country_path, COUNTRY_KEY
+        missing if full_rebuild else country_path, COUNTRY_KEY, COUNTRY_MEASURES
     )
     tool_existing = load_summary(
-        missing if full_rebuild else tool_path, TOOL_KEY
+        missing if full_rebuild else tool_path, TOOL_KEY, TOOL_MEASURES
     )
 
     if country_lookup is None:
@@ -251,11 +267,15 @@ def run(
     )
     country_merged = merge_summary(
         country_existing,
-        counts_to_frame(country_counts, COUNTRY_KEY),
+        counts_to_frame(country_counts, COUNTRY_KEY, COUNTRY_MEASURES),
         COUNTRY_KEY,
+        COUNTRY_MEASURES,
     )
     tool_merged = merge_summary(
-        tool_existing, counts_to_frame(tool_counts, TOOL_KEY), TOOL_KEY
+        tool_existing,
+        counts_to_frame(tool_counts, TOOL_KEY, TOOL_MEASURES),
+        TOOL_KEY,
+        TOOL_MEASURES,
     )
     write_summary(atlas_merged, atlas_path)
     write_summary(country_merged, country_path)

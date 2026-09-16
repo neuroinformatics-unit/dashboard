@@ -39,8 +39,8 @@ import json
 
 import pandas as pd
 from bokeh.io import output_notebook, show
-from bokeh.layouts import column, gridplot, row
-from bokeh.models import ColumnDataSource, CustomJS, Div
+from bokeh.layouts import column, gridplot
+from bokeh.models import ColumnDataSource, CustomJS, Div, RadioButtonGroup
 from bokeh.plotting import figure
 from bokeh.resources import INLINE
 
@@ -86,18 +86,23 @@ def _style(fig):
     return fig
 
 
-def _bar_figure(labels, values, *, title, color, x_label, keys=None):
-    """A horizontal bar chart, largest value at top, with hover tooltips.
+def _bar_figure(labels, keys, metrics, *, title, color):
+    """A horizontal bar chart, largest value (in the first metric) at top,
+    with a metric-toggle button group beneath it.
 
-    ``keys`` (defaulting to ``labels``) are the lookup keys used by
-    ``_wire_drilldown`` - only the atlas chart needs a raw key that differs
-    from its human-readable label.
+    ``metrics`` is ``[(key, button_label, unit_label, bar_values, daily_lookup,
+    daily_total), ...]`` - the same short ``key`` used throughout to select
+    which of several parallel value sets is currently shown. Only the bar
+    chart's own lengths + axis label are wired here; call
+    ``_wire_interactivity`` to also hook it up to a shared time series.
     """
-    keys = list(keys) if keys is not None else list(labels)
-    source = ColumnDataSource(data=dict(label=list(labels), key=keys, value=list(values)))
+    default_key, _, default_unit, default_values, _, _ = metrics[0]
+    source = ColumnDataSource(
+        data=dict(label=list(labels), key=list(keys), value=list(default_values))
+    )
     fig = figure(
         y_range=list(labels),
-        height=max(170, 26 * len(labels)),
+        height=max(170, 26 * len(labels)) + (36 if len(metrics) > 1 else 0),
         sizing_mode="stretch_width",
         tools="tap,hover,reset",
         toolbar_location=None,
@@ -113,46 +118,91 @@ def _bar_figure(labels, values, *, title, color, x_label, keys=None):
         selection_fill_color=color,
         nonselection_fill_alpha=0.35,
     )
-    fig.hover.tooltips = [("", "@label"), (x_label, "@value{0,0}")]
-    fig.xaxis.axis_label = x_label
+    fig.hover.tooltips = [("", "@label"), ("value", "@value{0,0.[00]}")]
+    fig.xaxis.axis_label = default_unit
     fig.x_range.start = 0
     _style(fig)
-    return fig, source
+
+    if len(metrics) > 1:
+        selector = RadioButtonGroup(
+            labels=[label for _, label, *_ in metrics], active=0
+        )
+    else:
+        selector = None
+    return fig, source, selector
 
 
-def _wire_drilldown(source, lookup, prefix, *, ts_source, caption, total_y, base_caption):
-    """Clicking a bar swaps the shared time-series line to that entity's
-    own daily trend; clicking the same (selected) bar again resets it."""
-    callback = CustomJS(
-        args=dict(
-            bar_source=source,
-            ts=ts_source,
-            caption=caption,
-            lookup=lookup,
-            total_y=total_y,
-            base_caption=base_caption,
-            prefix=prefix,
-        ),
+def _wire_interactivity(fig, source, selector, metrics, prefix, *, ts_source, ts_fig, caption):
+    """Wires a bar chart (built by ``_bar_figure``) to the shared time
+    series: clicking a bar shows that entity's own daily trend in whichever
+    metric the toggle is currently set to; clicking the same bar again, or
+    switching metric, resets back to the overall total for that metric."""
+    metric_keys = [m[0] for m in metrics]
+    metric_labels = {m[0]: m[1] for m in metrics}
+    units = {m[0]: m[2] for m in metrics}
+    values_by_metric = {m[0]: m[3] for m in metrics}
+    lookup_by_metric = {m[0]: m[4] for m in metrics}
+    total_by_metric = {m[0]: m[5] for m in metrics}
+
+    args = dict(
+        bar_source=source,
+        ts=ts_source,
+        caption=caption,
+        selector=selector,
+        metric_keys=metric_keys,
+        metric_labels=metric_labels,
+        units=units,
+        values_by_metric=values_by_metric,
+        lookup_by_metric=lookup_by_metric,
+        total_by_metric=total_by_metric,
+        prefix=prefix,
+        fig_xaxis=fig.xaxis[0],
+        ts_yaxis=ts_fig.yaxis[0],
+    )
+
+    tap_callback = CustomJS(
+        args=args,
         code="""
+        const metric = selector ? metric_keys[selector.active] : metric_keys[0];
         const idx = cb_obj.indices;
         if (idx.length === 0) {
-            ts.data['y'] = total_y;
-            caption.text = base_caption;
+            ts.data['y'] = total_by_metric[metric];
+            caption.text = 'Showing <b>all ' + metric_labels[metric] +
+                '</b> &mdash; click a bar below to drill in';
         } else {
             const i = idx[idx.length - 1];
             const key = bar_source.data['key'][i];
-            const series = lookup[key];
+            const series = (lookup_by_metric[metric] || {})[key];
             if (series !== undefined) {
                 const label = bar_source.data['label'][i];
                 ts.data['y'] = series;
                 caption.text = 'Showing <b>' + prefix + ':</b> ' + label +
-                    ' &mdash; click the bar again to reset';
+                    ' (' + metric_labels[metric] + ') &mdash; click the bar again to reset';
             }
         }
         ts.change.emit();
+        ts_yaxis.axis_label = units[metric];
         """,
     )
-    source.selected.js_on_change("indices", callback)
+    source.selected.js_on_change("indices", tap_callback)
+
+    if selector is not None:
+        metric_callback = CustomJS(
+            args=args,
+            code="""
+            const metric = metric_keys[selector.active];
+            bar_source.data['value'] = values_by_metric[metric];
+            bar_source.change.emit();
+            bar_source.selected.indices = [];
+            fig_xaxis.axis_label = units[metric];
+            ts.data['y'] = total_by_metric[metric];
+            ts.change.emit();
+            ts_yaxis.axis_label = units[metric];
+            caption.text = 'Showing <b>all ' + metric_labels[metric] +
+                '</b> &mdash; click a bar below to drill in';
+            """,
+        )
+        selector.js_on_change("active", metric_callback)
 
 
 GB = 1e9
@@ -169,10 +219,12 @@ usage = _read(
     ["date", "atlas", "resource", "requests", "bytes_sent"],
 )
 countries = _read(
-    COUNTRY_PARQUET_PATH, ["date", "country", "requests", "bytes_sent"]
+    COUNTRY_PARQUET_PATH,
+    ["date", "country", "requests", "bytes_sent", "manifest_requests"],
 )
 tools = _read(
-    TOOL_PARQUET_PATH, ["date", "tool", "requests", "bytes_sent"]
+    TOOL_PARQUET_PATH,
+    ["date", "tool", "requests", "bytes_sent", "manifest_requests"],
 )
 has_data = not usage.empty
 
@@ -200,6 +252,12 @@ if has_data:
 
     # The per-atlas views use annotation-set requests only (see intro).
     annotations = usage[usage["resource"] == "annotation"]
+    # The group-root zarr.json fetch for an annotation store - one per
+    # "open", so a better popularity proxy than raw request counts (which
+    # are skewed by array size and how much of it a client reads). Only
+    # collected from the point this classification was added; see the note
+    # by the table below.
+    annotation_manifests = usage[usage["resource"] == "annotation-manifest"]
 
     by_atlas = (
         annotations.groupby("atlas")
@@ -208,6 +266,12 @@ if has_data:
             gb=("bytes_sent", lambda s: s.sum() / GB),
         )
         .sort_values("requests", ascending=False)
+    )
+    by_atlas["manifest_opens"] = (
+        annotation_manifests.groupby("atlas")["requests"]
+        .sum()
+        .reindex(by_atlas.index, fill_value=0)
+        .astype(int)
     )
     # Human-readable name for display; the index stays the raw key derived
     # by classify_key (used to filter "unclassified" etc).
@@ -218,9 +282,11 @@ if has_data:
         .sum()
         .sort_values(ascending=False)
     )
+    by_country_gb = countries.groupby("country")["bytes_sent"].sum() / GB
     by_resource = (
         usage.groupby("resource")["requests"].sum().sort_values(ascending=False)
     )
+    by_resource_gb = usage.groupby("resource")["bytes_sent"].sum() / GB
     by_tool = (
         tools.groupby("tool")["requests"].sum().sort_values(ascending=False)
     )
@@ -232,21 +298,27 @@ if has_data:
     )
     if not tools.empty:
         tools["date"] = pd.to_datetime(tools["date"])
+        # Reindexed onto the same daily index as every other breakdown
+        # below, so all the drilldown series line up on one shared axis.
         tool_daily = (
             tools.pivot_table(
-                index="date",
-                columns="tool",
-                values="requests",
-                aggfunc="sum",
-                fill_value=0,
+                index="date", columns="tool", values="requests",
+                aggfunc="sum", fill_value=0,
             )
-            # Reindexed onto the same daily index as every other breakdown
-            # below, so all the drilldown series line up on one shared axis.
+            .reindex(by_day.index, fill_value=0)
+            .reindex(columns=by_tool.index)
+        )
+        tool_bytes_daily = (
+            tools.pivot_table(
+                index="date", columns="tool", values="bytes_sent",
+                aggfunc="sum", fill_value=0,
+            )
             .reindex(by_day.index, fill_value=0)
             .reindex(columns=by_tool.index)
         )
     else:
         tool_daily = pd.DataFrame(index=by_day.index)
+        tool_bytes_daily = pd.DataFrame(index=by_day.index)
 
     total_requests = int(usage["requests"].sum())
     total_bytes = int(usage["bytes_sent"].sum())
@@ -258,28 +330,65 @@ if has_data:
     country_total = int(by_country.sum())
     unresolved_countries = int(by_country.get("??", 0))
 
-    # {group value -> [requests per day]}, aligned to by_day.index, used to
+    # {group value -> [value per day]}, aligned to by_day.index, used to
     # drive the click-to-drilldown time series below - all computed once
     # here so the interactive charts are pure client-side JS afterwards.
-    def _daily_lookup(df, group_col):
+    def _daily_lookup(df, group_col, value_col):
         if df.empty:
             return {}
         pivot = (
-            df.groupby(["date", group_col])["requests"]
+            df.groupby(["date", group_col])[value_col]
             .sum()
             .unstack(fill_value=0)
             .reindex(by_day.index, fill_value=0)
         )
-        return {str(col): pivot[col].astype(int).tolist() for col in pivot.columns}
+        return {str(col): pivot[col].tolist() for col in pivot.columns}
 
-    atlas_daily = _daily_lookup(annotations, "atlas")
-    resource_daily = _daily_lookup(usage, "resource")
-    country_daily = _daily_lookup(countries, "country")
+    def _gb(d):
+        return {k: [round(v / GB, 3) for v in vs] for k, vs in d.items()}
+
+    atlas_daily = _daily_lookup(annotations, "atlas", "requests")
+    atlas_manifest_daily = _daily_lookup(annotation_manifests, "atlas", "requests")
+    atlas_gb_daily = _gb(_daily_lookup(annotations, "atlas", "bytes_sent"))
+
+    resource_daily = _daily_lookup(usage, "resource", "requests")
+    resource_gb_daily = _gb(_daily_lookup(usage, "resource", "bytes_sent"))
+
+    country_daily = _daily_lookup(countries, "country", "requests")
+    country_gb_daily = _gb(_daily_lookup(countries, "country", "bytes_sent"))
+    # Country/tool have no resource dimension, so "manifest opens" here means
+    # *any* resource type's group-root zarr.json (annotation, template, ...)
+    # - broader than the atlas chart's annotation-only manifest opens.
+    country_manifest_daily = _daily_lookup(countries, "country", "manifest_requests")
+    by_country_manifest = countries.groupby("country")["manifest_requests"].sum()
+
     tool_daily_lookup = {
         str(col): tool_daily[col].fillna(0).astype(int).tolist()
         for col in tool_daily.columns
     }
+    tool_gb_daily_lookup = {
+        str(col): [round(v / GB, 3) for v in tool_bytes_daily[col].fillna(0).tolist()]
+        for col in tool_bytes_daily.columns
+    }
+    tool_manifest_daily = _daily_lookup(tools, "tool", "manifest_requests")
+    by_tool_manifest = tools.groupby("tool")["manifest_requests"].sum()
+
     total_daily = by_day["requests"].astype(int).tolist()
+    total_gb_daily = [round(v / GB, 3) for v in by_day["bytes_sent"].tolist()]
+    total_manifest_daily = (
+        annotation_manifests.groupby("date")["requests"]
+        .sum()
+        .reindex(by_day.index, fill_value=0)
+        .astype(int)
+        .tolist()
+    )
+    total_manifest_all_daily = (
+        countries.groupby("date")["manifest_requests"]
+        .sum()
+        .reindex(by_day.index, fill_value=0)
+        .astype(int)
+        .tolist()
+    )
 ```
 
 ```{python}
@@ -320,13 +429,21 @@ if has_data:
 
 ## Requests by atlas
 
+**Manifest opens** counts only the one metadata fetch (`zarr.json`) a client
+makes when it *opens* an atlas's annotation store, not the many
+resolution/chunk files it then reads - so unlike raw request counts, it
+isn't skewed by array size or how much of the array a given client actually
+pulls, making it the closer proxy for "how many times has this atlas been
+downloaded." Sort by that column instead of "Requests" for a popularity
+ranking; it's also selectable as a metric on the atlas chart below.
+
 ```{python}
 # | label: table
 if has_data:
     import itables
 
-    table = by_atlas.reset_index()[["name", "requests", "gb"]]
-    table.columns = ["Atlas", "Requests", "Data served (GB)"]
+    table = by_atlas.reset_index()[["name", "requests", "manifest_opens", "gb"]]
+    table.columns = ["Atlas", "Requests", "Manifest opens", "Data served (GB)"]
     table["Data served (GB)"] = table["Data served (GB)"].round(1)
     table["Share of requests"] = (
         table["Requests"] / annotation_requests * 100
@@ -341,17 +458,27 @@ if has_data:
     )
 ```
 
-## Explore requests interactively
+## Explore interactively
 
-Click a bar in any of the four charts below to see *that slice's own* daily
-trend in the time series above them; click the same bar again to reset it
-back to the overall total.
+Each chart below can switch between **requests**, **manifest opens** and
+**data served** with the buttons underneath it - except "by resource type",
+where manifest opens are already broken out as their own rows (e.g.
+`annotation-manifest`), so a toggle for it would be redundant. Note that
+"manifest opens" means something slightly narrower for atlas specifically -
+only its annotation store's opens (the popularity proxy from the note
+above) - versus country/tool, where it covers a store opening of *any*
+resource type, since those breakdowns don't carry a resource dimension to
+narrow it further. Click a bar to see *that slice's own* daily
+trend, in whichever metric is selected, in the time series above; click the
+bar again, or switch metric, to reset back to the overall total.
 
 ```{python}
 # | label: explorer
 if has_data:
-    BASE_CAPTION = "Showing <b>all requests</b> &mdash; click a bar below to drill in"
-    caption = Div(text=BASE_CAPTION, styles={"color": INK, "font-size": "0.85rem"})
+    caption = Div(
+        text="Showing <b>all requests</b> &mdash; click a bar below to drill in",
+        styles={"color": INK, "font-size": "0.85rem"},
+    )
 
     ts_source = ColumnDataSource(data=dict(x=list(by_day.index), y=total_daily))
     ts_fig = figure(
@@ -360,76 +487,109 @@ if has_data:
         sizing_mode="stretch_width",
         tools="hover,reset,xpan,xwheel_zoom",
         toolbar_location="above",
-        title="Requests over time",
+        title="Over time",
     )
     ts_fig.line("x", "y", source=ts_source, color=GREEN, line_width=2)
-    ts_fig.hover.tooltips = [("date", "@x{%F}"), ("requests", "@y{0,0}")]
+    ts_fig.hover.tooltips = [("date", "@x{%F}"), ("value", "@y{0,0.[00]}")]
     ts_fig.hover.formatters = {"@x": "datetime"}
     ts_fig.hover.mode = "vline"
+    ts_fig.yaxis.axis_label = "requests / day"
     ts_fig.y_range.start = 0
     _style(ts_fig)
+
+    def _panel(fig, source, selector):
+        return column(fig, selector, sizing_mode="stretch_width") if selector else fig
 
     top_atlas = (
         by_atlas[by_atlas.index != "unclassified"].head(15).sort_values("requests")
     )
-    atlas_fig, atlas_source = _bar_figure(
+    atlas_metrics = [
+        ("requests", "Requests", "requests / day",
+         top_atlas["requests"].tolist(), atlas_daily, total_daily),
+        ("manifest", "Manifest opens", "manifest opens / day",
+         top_atlas["manifest_opens"].tolist(), atlas_manifest_daily, total_manifest_daily),
+        ("gb", "GB served", "GB / day",
+         top_atlas["gb"].round(2).tolist(), atlas_gb_daily, total_gb_daily),
+    ]
+    atlas_fig, atlas_source, atlas_selector = _bar_figure(
         [display_name(k) for k in top_atlas.index],
-        top_atlas["requests"].tolist(),
-        keys=list(top_atlas.index),
+        list(top_atlas.index),
+        atlas_metrics,
         title="By atlas (top 15)",
         color=GREEN,
-        x_label="requests",
     )
-    _wire_drilldown(
-        atlas_source, atlas_daily, "atlas",
-        ts_source=ts_source, caption=caption,
-        total_y=total_daily, base_caption=BASE_CAPTION,
+    _wire_interactivity(
+        atlas_fig, atlas_source, atlas_selector, atlas_metrics, "atlas",
+        ts_source=ts_source, ts_fig=ts_fig, caption=caption,
     )
 
     top_country = by_country[by_country.index != "??"].head(15).sort_values()
-    country_fig, country_source = _bar_figure(
-        list(top_country.index),
-        top_country.tolist(),
+    country_metrics = [
+        ("requests", "Requests", "requests / day",
+         top_country.tolist(), country_daily, total_daily),
+        ("manifest", "Manifest opens", "manifest opens / day",
+         by_country_manifest.reindex(top_country.index, fill_value=0).tolist(),
+         country_manifest_daily, total_manifest_all_daily),
+        ("gb", "GB served", "GB / day",
+         by_country_gb.reindex(top_country.index, fill_value=0).round(2).tolist(),
+         country_gb_daily, total_gb_daily),
+    ]
+    country_fig, country_source, country_selector = _bar_figure(
+        list(top_country.index), list(top_country.index), country_metrics,
         title="By country (top 15)",
         color=ORANGE,
-        x_label="requests",
     )
-    _wire_drilldown(
-        country_source, country_daily, "country",
-        ts_source=ts_source, caption=caption,
-        total_y=total_daily, base_caption=BASE_CAPTION,
+    _wire_interactivity(
+        country_fig, country_source, country_selector, country_metrics, "country",
+        ts_source=ts_source, ts_fig=ts_fig, caption=caption,
     )
 
     resource_sorted = by_resource.sort_values()
-    resource_fig, resource_source = _bar_figure(
-        list(resource_sorted.index),
-        resource_sorted.tolist(),
+    resource_metrics = [
+        ("requests", "Requests", "requests / day",
+         resource_sorted.tolist(), resource_daily, total_daily),
+        ("gb", "GB served", "GB / day",
+         by_resource_gb.reindex(resource_sorted.index, fill_value=0).round(2).tolist(),
+         resource_gb_daily, total_gb_daily),
+    ]
+    resource_fig, resource_source, resource_selector = _bar_figure(
+        list(resource_sorted.index), list(resource_sorted.index), resource_metrics,
         title="By resource type",
         color=PURPLE,
-        x_label="requests",
     )
-    _wire_drilldown(
-        resource_source, resource_daily, "resource type",
-        ts_source=ts_source, caption=caption,
-        total_y=total_daily, base_caption=BASE_CAPTION,
+    _wire_interactivity(
+        resource_fig, resource_source, resource_selector, resource_metrics, "resource type",
+        ts_source=ts_source, ts_fig=ts_fig, caption=caption,
     )
 
     tool_sorted = by_tool.sort_values()
-    tool_fig, tool_source = _bar_figure(
-        list(tool_sorted.index),
-        tool_sorted.tolist(),
+    tool_metrics = [
+        ("requests", "Requests", "requests / day",
+         tool_sorted.tolist(), tool_daily_lookup, total_daily),
+        ("manifest", "Manifest opens", "manifest opens / day",
+         by_tool_manifest.reindex(tool_sorted.index, fill_value=0).tolist(),
+         tool_manifest_daily, total_manifest_all_daily),
+        ("gb", "GB served", "GB / day",
+         tool_gb.reindex(tool_sorted.index, fill_value=0).round(2).tolist(),
+         tool_gb_daily_lookup, total_gb_daily),
+    ]
+    tool_fig, tool_source, tool_selector = _bar_figure(
+        list(tool_sorted.index), list(tool_sorted.index), tool_metrics,
         title="By client tool",
         color=BLUE,
-        x_label="requests",
     )
-    _wire_drilldown(
-        tool_source, tool_daily_lookup, "client tool",
-        ts_source=ts_source, caption=caption,
-        total_y=total_daily, base_caption=BASE_CAPTION,
+    _wire_interactivity(
+        tool_fig, tool_source, tool_selector, tool_metrics, "client tool",
+        ts_source=ts_source, ts_fig=ts_fig, caption=caption,
     )
 
     grid = gridplot(
-        [[atlas_fig, country_fig], [resource_fig, tool_fig]],
+        [
+            [_panel(atlas_fig, atlas_source, atlas_selector),
+             _panel(country_fig, country_source, country_selector)],
+            [_panel(resource_fig, resource_source, resource_selector),
+             _panel(tool_fig, tool_source, tool_selector)],
+        ],
         sizing_mode="stretch_width",
         toolbar_location=None,
     )
@@ -447,12 +607,12 @@ if has_data and unresolved_countries and country_total:
     )
 ```
 
-## Requests per day by client tool
+## Per day by client tool
 
 ```{python}
 # | label: tool-over-time
 if has_data and not tool_daily.empty and tool_daily.shape[0] > 1:
-    top_cols = tool_daily.sum().sort_values(ascending=False).index[:6]
+    top_cols = list(tool_daily.sum().sort_values(ascending=False).index[:6])
     # Fixed hue order, checked with the design system's CVD-separation
     # validator (adjacent pairs pass in this order); a plain grey read as
     # colourless and failed, hence BROWN as the 6th hue instead of INK.
@@ -464,17 +624,22 @@ if has_data and not tool_daily.empty and tool_daily.shape[0] > 1:
         sizing_mode="stretch_width",
         tools="hover,reset,xpan,xwheel_zoom",
         toolbar_location="above",
-        title="Requests per day by client tool (top 6) — click a legend entry to isolate it",
+        title="Per day by client tool (top 6) — click a legend entry to isolate it",
     )
     dates = list(tool_daily.index)
+    line_sources = []
     for name, color in zip(top_cols, palette):
+        src = ColumnDataSource(data=dict(
+            x=dates,
+            y=tool_daily[name].tolist(),
+            y_requests=tool_daily[name].tolist(),
+            y_manifest=tool_manifest_daily.get(str(name), [0] * len(dates)),
+            y_gb=[round(v / GB, 3) for v in tool_bytes_daily[name].tolist()],
+        ))
+        line_sources.append(src)
         fig.line(
-            dates,
-            tool_daily[name].tolist(),
-            color=color,
-            line_width=2,
-            legend_label=str(name),
-            name=str(name),
+            "x", "y", source=src, color=color, line_width=2,
+            legend_label=str(name), name=str(name),
         )
     fig.legend.click_policy = "hide"
     fig.legend.location = "top_left"
@@ -482,47 +647,29 @@ if has_data and not tool_daily.empty and tool_daily.shape[0] > 1:
     fig.legend.border_line_alpha = 0
     fig.legend.label_text_color = INK
     fig.y_range.start = 0
-    fig.hover.tooltips = [("tool", "$name"), ("date", "@x{%F}"), ("requests", "@y{0,0}")]
+    fig.yaxis.axis_label = "requests / day"
+    fig.hover.tooltips = [("tool", "$name"), ("date", "@x{%F}"), ("value", "@y{0,0.[00]}")]
     fig.hover.formatters = {"@x": "datetime"}
     fig.hover.mode = "vline"
     _style(fig)
-    show(fig)
-```
 
-## Data served
-
-The charts above all count *requests*, not bytes - a resource fetched a
-thousand times counts a thousand times over even if it is tiny, and a huge
-file counts once even if it dwarfs everything else in size. These two show
-the same "by atlas" / "by client tool" breakdowns weighted by GB served
-instead.
-
-```{python}
-# | label: data-served
-if has_data:
-    top_gb = (
-        by_atlas[by_atlas.index != "unclassified"]
-        .head(15)
-        .sort_values("gb")
+    tool_selector = RadioButtonGroup(
+        labels=["Requests", "Manifest opens", "GB served"], active=0
     )
-    atlas_gb_fig, _ = _bar_figure(
-        [display_name(k) for k in top_gb.index],
-        top_gb["gb"].tolist(),
-        title="Data served by atlas (top 15)",
-        color=BLUE,
-        x_label="GB",
-    )
-
-    tool_gb_sorted = tool_gb.reindex(by_tool.index).dropna().sort_values()
-    tool_gb_fig, _ = _bar_figure(
-        list(tool_gb_sorted.index),
-        tool_gb_sorted.round(1).tolist(),
-        title="Data served by client tool",
-        color=BROWN,
-        x_label="GB",
-    )
-
-    show(row(atlas_gb_fig, tool_gb_fig, sizing_mode="stretch_width"))
+    tool_selector.js_on_change("active", CustomJS(
+        args=dict(sources=line_sources, fig_yaxis=fig.yaxis[0]),
+        code="""
+        const keys = ['y_requests', 'y_manifest', 'y_gb'];
+        const labels = ['requests / day', 'manifest opens / day', 'GB / day'];
+        const key = keys[cb_obj.active];
+        for (const src of sources) {
+            src.data['y'] = src.data[key];
+            src.change.emit();
+        }
+        fig_yaxis.axis_label = labels[cb_obj.active];
+        """,
+    ))
+    show(column(fig, tool_selector, sizing_mode="stretch_width"))
 ```
 
 ## Client tool breakdown
