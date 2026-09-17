@@ -87,14 +87,14 @@ def _style(fig):
 
 
 def _bar_figure(labels, keys, metrics, *, title, color):
-    """A horizontal bar chart, largest value (in the first metric) at top,
-    with a metric-toggle button group beneath it.
+    """A horizontal bar chart, largest value (in the first metric) at top.
 
     ``metrics`` is ``[(key, button_label, unit_label, bar_values, daily_lookup,
     daily_total), ...]`` - the same short ``key`` used throughout to select
-    which of several parallel value sets is currently shown. Only the bar
-    chart's own lengths + axis label are wired here; call
-    ``_wire_interactivity`` to also hook it up to a shared time series.
+    which of several parallel value sets is currently shown, kept on the
+    chart (and its source) so ``_wire_global`` can look them up later. Call
+    ``_wire_global`` once, across every bar chart, to hook them all up to a
+    single shared metric toggle and time series.
     """
     default_key, _, default_unit, default_values, _, _ = metrics[0]
     source = ColumnDataSource(
@@ -102,7 +102,7 @@ def _bar_figure(labels, keys, metrics, *, title, color):
     )
     fig = figure(
         y_range=list(labels),
-        height=max(170, 26 * len(labels)) + (36 if len(metrics) > 1 else 0),
+        height=max(170, 26 * len(labels)),
         sizing_mode="stretch_width",
         tools="tap,hover,reset",
         toolbar_location=None,
@@ -122,87 +122,106 @@ def _bar_figure(labels, keys, metrics, *, title, color):
     fig.xaxis.axis_label = default_unit
     fig.x_range.start = 0
     _style(fig)
-
-    if len(metrics) > 1:
-        selector = RadioButtonGroup(
-            labels=[label for _, label, *_ in metrics], active=0
-        )
-    else:
-        selector = None
-    return fig, source, selector
+    return fig, source
 
 
-def _wire_interactivity(fig, source, selector, metrics, prefix, *, ts_source, ts_fig, caption):
-    """Wires a bar chart (built by ``_bar_figure``) to the shared time
-    series: clicking a bar shows that entity's own daily trend in whichever
-    metric the toggle is currently set to; clicking the same bar again, or
-    switching metric, resets back to the overall total for that metric."""
-    metric_keys = [m[0] for m in metrics]
-    metric_labels = {m[0]: m[1] for m in metrics}
-    units = {m[0]: m[2] for m in metrics}
-    values_by_metric = {m[0]: m[3] for m in metrics}
-    lookup_by_metric = {m[0]: m[4] for m in metrics}
-    total_by_metric = {m[0]: m[5] for m in metrics}
+def _wire_global(selector, panels, *, ts_source, ts_fig, caption):
+    """One shared ``RadioButtonGroup`` (``selector``) drives every bar
+    chart's own bar lengths/axis label *and* the linked time series.
 
-    args = dict(
-        bar_source=source,
-        ts=ts_source,
-        caption=caption,
-        selector=selector,
-        metric_keys=metric_keys,
-        metric_labels=metric_labels,
-        units=units,
-        values_by_metric=values_by_metric,
-        lookup_by_metric=lookup_by_metric,
-        total_by_metric=total_by_metric,
-        prefix=prefix,
-        fig_xaxis=fig.xaxis[0],
-        ts_yaxis=ts_fig.yaxis[0],
-    )
+    ``panels`` is ``[(fig, source, metrics, prefix), ...]`` - every panel
+    must share the same metric keys/order as ``selector``'s labels. Clicking
+    a bar shows that entity's own daily trend, in whichever metric is
+    currently toggled, in the shared time series; clicking the same bar
+    again, or switching metric, resets every panel back to its overall
+    total for that metric.
+    """
+    metric_keys = [m[0] for m in panels[0][2]]
+    metric_labels = {m[0]: m[1] for m in panels[0][2]}
+    bar_sources = [p[1] for p in panels]
+    fig_xaxes = [p[0].xaxis[0] for p in panels]
+    values_lists = [{m[0]: m[3] for m in p[2]} for p in panels]
+    units_lists = [{m[0]: m[2] for m in p[2]} for p in panels]
+    # The reset/total series can differ per panel (e.g. the atlas chart's
+    # "manifest" total is narrower than country/tool/resource's), so the
+    # linked time series always reflects whichever panel triggered it -
+    # on a bare metric switch (no bar selected anywhere) that's panel 0.
+    total_lists = [{m[0]: m[5] for m in p[2]} for p in panels]
 
-    tap_callback = CustomJS(
-        args=args,
+    metric_change = CustomJS(
+        args=dict(
+            selector=selector,
+            bar_sources=bar_sources,
+            fig_xaxes=fig_xaxes,
+            values_lists=values_lists,
+            units_lists=units_lists,
+            total_lists=total_lists,
+            metric_keys=metric_keys,
+            metric_labels=metric_labels,
+            ts=ts_source,
+            caption=caption,
+            ts_yaxis=ts_fig.yaxis[0],
+        ),
         code="""
-        const metric = selector ? metric_keys[selector.active] : metric_keys[0];
-        const idx = cb_obj.indices;
-        if (idx.length === 0) {
-            ts.data['y'] = total_by_metric[metric];
-            caption.text = 'Showing <b>all ' + metric_labels[metric] +
-                '</b> &mdash; click a bar below to drill in';
-        } else {
-            const i = idx[idx.length - 1];
-            const key = bar_source.data['key'][i];
-            const series = (lookup_by_metric[metric] || {})[key];
-            if (series !== undefined) {
-                const label = bar_source.data['label'][i];
-                ts.data['y'] = series;
-                caption.text = 'Showing <b>' + prefix + ':</b> ' + label +
-                    ' (' + metric_labels[metric] + ') &mdash; click the bar again to reset';
-            }
+        const metric = metric_keys[selector.active];
+        for (let j = 0; j < bar_sources.length; j++) {
+            bar_sources[j].data['value'] = values_lists[j][metric];
+            bar_sources[j].change.emit();
+            bar_sources[j].selected.indices = [];
+            fig_xaxes[j].axis_label = units_lists[j][metric];
         }
+        ts.data['y'] = total_lists[0][metric];
         ts.change.emit();
-        ts_yaxis.axis_label = units[metric];
+        ts_yaxis.axis_label = units_lists[0][metric];
+        caption.text = 'Showing <b>all ' + metric_labels[metric] +
+            '</b> &mdash; click a bar below to drill in';
         """,
     )
-    source.selected.js_on_change("indices", tap_callback)
+    selector.js_on_change("active", metric_change)
 
-    if selector is not None:
-        metric_callback = CustomJS(
-            args=args,
+    for fig, source, metrics, prefix in panels:
+        panel_keys = [m[0] for m in metrics]
+        panel_labels = {m[0]: m[1] for m in metrics}
+        units = {m[0]: m[2] for m in metrics}
+        lookup_by_metric = {m[0]: m[4] for m in metrics}
+        total_by_metric = {m[0]: m[5] for m in metrics}
+        tap_callback = CustomJS(
+            args=dict(
+                bar_source=source,
+                ts=ts_source,
+                caption=caption,
+                selector=selector,
+                metric_keys=panel_keys,
+                metric_labels=panel_labels,
+                units=units,
+                lookup_by_metric=lookup_by_metric,
+                total_by_metric=total_by_metric,
+                prefix=prefix,
+                ts_yaxis=ts_fig.yaxis[0],
+            ),
             code="""
             const metric = metric_keys[selector.active];
-            bar_source.data['value'] = values_by_metric[metric];
-            bar_source.change.emit();
-            bar_source.selected.indices = [];
-            fig_xaxis.axis_label = units[metric];
-            ts.data['y'] = total_by_metric[metric];
+            const idx = cb_obj.indices;
+            if (idx.length === 0) {
+                ts.data['y'] = total_by_metric[metric];
+                caption.text = 'Showing <b>all ' + metric_labels[metric] +
+                    '</b> &mdash; click a bar below to drill in';
+            } else {
+                const i = idx[idx.length - 1];
+                const key = bar_source.data['key'][i];
+                const series = (lookup_by_metric[metric] || {})[key];
+                if (series !== undefined) {
+                    const label = bar_source.data['label'][i];
+                    ts.data['y'] = series;
+                    caption.text = 'Showing <b>' + prefix + ':</b> ' + label +
+                        ' (' + metric_labels[metric] + ') &mdash; click the bar again to reset';
+                }
+            }
             ts.change.emit();
             ts_yaxis.axis_label = units[metric];
-            caption.text = 'Showing <b>all ' + metric_labels[metric] +
-                '</b> &mdash; click a bar below to drill in';
             """,
         )
-        selector.js_on_change("active", metric_callback)
+        source.selected.js_on_change("indices", tap_callback)
 
 
 GB = 1e9
@@ -353,6 +372,21 @@ if has_data:
 
     resource_daily = _daily_lookup(usage, "resource", "requests")
     resource_gb_daily = _gb(_daily_lookup(usage, "resource", "bytes_sent"))
+    # "Manifest opens" per resource *category*: a "<type>-manifest" row is
+    # entirely manifest opens (so its own requests figure, unchanged); every
+    # other row (annotation, packaged-atlas, ...) excludes manifest fetches
+    # by construction (they get their own row), so it's zero there.
+    zero_daily = [0] * len(by_day.index)
+    resource_manifest_daily = {
+        str(r): (resource_daily[str(r)] if str(r).endswith("-manifest") else zero_daily)
+        for r in by_resource.index
+    }
+    by_resource_manifest = pd.Series(
+        {
+            r: (int(by_resource[r]) if str(r).endswith("-manifest") else 0)
+            for r in by_resource.index
+        }
+    )
 
     country_daily = _daily_lookup(countries, "country", "requests")
     country_gb_daily = _gb(_daily_lookup(countries, "country", "bytes_sent"))
@@ -445,9 +479,6 @@ if has_data:
     table = by_atlas.reset_index()[["name", "requests", "manifest_opens", "gb"]]
     table.columns = ["Atlas", "Requests", "Manifest opens", "Data served (GB)"]
     table["Data served (GB)"] = table["Data served (GB)"].round(1)
-    table["Share of requests"] = (
-        table["Requests"] / annotation_requests * 100
-    ).round(1).astype(str) + "%"
     itables.show(
         table,
         classes="display nowrap cell-border",
@@ -455,26 +486,34 @@ if has_data:
         order=[[1, "desc"]],
         paging=False,
         scrollX=True,
+        # Only the first 10 rows show by default; the rest scroll within
+        # the table itself rather than lengthening the page.
+        scrollY="380px",
+        scrollCollapse=True,
     )
 ```
 
 ## Explore interactively
 
-Each chart below can switch between **requests**, **manifest opens** and
-**data served** with the buttons underneath it - except "by resource type",
-where manifest opens are already broken out as their own rows (e.g.
-`annotation-manifest`), so a toggle for it would be redundant. Note that
-"manifest opens" means something slightly narrower for atlas specifically -
-only its annotation store's opens (the popularity proxy from the note
-above) - versus country/tool, where it covers a store opening of *any*
-resource type, since those breakdowns don't carry a resource dimension to
-narrow it further. Click a bar to see *that slice's own* daily
-trend, in whichever metric is selected, in the time series above; click the
-bar again, or switch metric, to reset back to the overall total.
+One toggle controls every chart below: **Requests**, **Manifest opens** or
+**GB served**. Note that "manifest opens" means something slightly narrower
+for atlas specifically - only its annotation store's opens (the popularity
+proxy from the note above) - versus country/tool/resource type, where it
+covers a store opening of *any* resource type, since those breakdowns don't
+carry a resource dimension to narrow it further (for "by resource type",
+switching to manifest opens shows only the `<type>-manifest` rows - the
+others are zero there by construction, since manifest fetches get their own
+row rather than being folded into e.g. `annotation`). Click a bar to see
+*that slice's own* daily trend, in whichever metric is selected, in the
+time series above; click the bar again, or switch metric, to reset back to
+the overall total.
 
 ```{python}
 # | label: explorer
 if has_data:
+    metric_selector = RadioButtonGroup(
+        labels=["Requests", "Manifest opens", "GB served"], active=0
+    )
     caption = Div(
         text="Showing <b>all requests</b> &mdash; click a bar below to drill in",
         styles={"color": INK, "font-size": "0.85rem"},
@@ -497,9 +536,6 @@ if has_data:
     ts_fig.y_range.start = 0
     _style(ts_fig)
 
-    def _panel(fig, source, selector):
-        return column(fig, selector, sizing_mode="stretch_width") if selector else fig
-
     top_atlas = (
         by_atlas[by_atlas.index != "unclassified"].head(15).sort_values("requests")
     )
@@ -511,16 +547,12 @@ if has_data:
         ("gb", "GB served", "GB / day",
          top_atlas["gb"].round(2).tolist(), atlas_gb_daily, total_gb_daily),
     ]
-    atlas_fig, atlas_source, atlas_selector = _bar_figure(
+    atlas_fig, atlas_source = _bar_figure(
         [display_name(k) for k in top_atlas.index],
         list(top_atlas.index),
         atlas_metrics,
         title="By atlas (top 15)",
         color=GREEN,
-    )
-    _wire_interactivity(
-        atlas_fig, atlas_source, atlas_selector, atlas_metrics, "atlas",
-        ts_source=ts_source, ts_fig=ts_fig, caption=caption,
     )
 
     top_country = by_country[by_country.index != "??"].head(15).sort_values()
@@ -534,32 +566,27 @@ if has_data:
          by_country_gb.reindex(top_country.index, fill_value=0).round(2).tolist(),
          country_gb_daily, total_gb_daily),
     ]
-    country_fig, country_source, country_selector = _bar_figure(
+    country_fig, country_source = _bar_figure(
         list(top_country.index), list(top_country.index), country_metrics,
         title="By country (top 15)",
         color=ORANGE,
-    )
-    _wire_interactivity(
-        country_fig, country_source, country_selector, country_metrics, "country",
-        ts_source=ts_source, ts_fig=ts_fig, caption=caption,
     )
 
     resource_sorted = by_resource.sort_values()
     resource_metrics = [
         ("requests", "Requests", "requests / day",
          resource_sorted.tolist(), resource_daily, total_daily),
+        ("manifest", "Manifest opens", "manifest opens / day",
+         by_resource_manifest.reindex(resource_sorted.index, fill_value=0).tolist(),
+         resource_manifest_daily, total_manifest_all_daily),
         ("gb", "GB served", "GB / day",
          by_resource_gb.reindex(resource_sorted.index, fill_value=0).round(2).tolist(),
          resource_gb_daily, total_gb_daily),
     ]
-    resource_fig, resource_source, resource_selector = _bar_figure(
+    resource_fig, resource_source = _bar_figure(
         list(resource_sorted.index), list(resource_sorted.index), resource_metrics,
         title="By resource type",
         color=PURPLE,
-    )
-    _wire_interactivity(
-        resource_fig, resource_source, resource_selector, resource_metrics, "resource type",
-        ts_source=ts_source, ts_fig=ts_fig, caption=caption,
     )
 
     tool_sorted = by_tool.sort_values()
@@ -573,27 +600,42 @@ if has_data:
          tool_gb.reindex(tool_sorted.index, fill_value=0).round(2).tolist(),
          tool_gb_daily_lookup, total_gb_daily),
     ]
-    tool_fig, tool_source, tool_selector = _bar_figure(
+    tool_fig, tool_source = _bar_figure(
         list(tool_sorted.index), list(tool_sorted.index), tool_metrics,
         title="By client tool",
         color=BLUE,
     )
-    _wire_interactivity(
-        tool_fig, tool_source, tool_selector, tool_metrics, "client tool",
+
+    _wire_global(
+        metric_selector,
+        [
+            (atlas_fig, atlas_source, atlas_metrics, "atlas"),
+            (country_fig, country_source, country_metrics, "country"),
+            (resource_fig, resource_source, resource_metrics, "resource type"),
+            (tool_fig, tool_source, tool_metrics, "client tool"),
+        ],
         ts_source=ts_source, ts_fig=ts_fig, caption=caption,
+    )
+
+    # The atlas chart still renders all 15 bars (so the metric toggle and
+    # tap-to-drilldown above keep working on the full list) - it's just
+    # clipped to roughly its top 10 by height, with a scrollbar for the rest.
+    atlas_panel = column(
+        atlas_fig,
+        height=300,
+        sizing_mode="stretch_width",
+        styles={"overflow-y": "auto", "border": f"1px solid {GRID}", "border-radius": "4px"},
     )
 
     grid = gridplot(
         [
-            [_panel(atlas_fig, atlas_source, atlas_selector),
-             _panel(country_fig, country_source, country_selector)],
-            [_panel(resource_fig, resource_source, resource_selector),
-             _panel(tool_fig, tool_source, tool_selector)],
+            [atlas_panel, country_fig],
+            [resource_fig, tool_fig],
         ],
         sizing_mode="stretch_width",
         toolbar_location=None,
     )
-    show(column(caption, ts_fig, grid, sizing_mode="stretch_width"))
+    show(column(metric_selector, caption, ts_fig, grid, sizing_mode="stretch_width"))
 ```
 
 ```{python}
@@ -676,15 +718,32 @@ if has_data and not tool_daily.empty and tool_daily.shape[0] > 1:
 
 ```{python}
 # | label: tool-table
-# | output: asis
 if has_data and not by_tool.empty:
+    import itables
+
     total = by_tool.sum()
-    lines = ["| Client tool | Requests | Share | Data served (GB) |",
-             "| --- | --: | --: | --: |"]
-    for name, requests in by_tool.items():
-        lines.append(
-            f"| {name} | {requests:,} | {requests / total * 100:.1f}% "
-            f"| {tool_gb.get(name, 0):,.1f} |"
-        )
-    print("\n".join(lines))
+    tool_table = pd.DataFrame({
+        "Client tool": by_tool.index,
+        "Requests": by_tool.values,
+        "Share": [f"{r / total * 100:.1f}%" for r in by_tool.values],
+        "Data served (GB)": [
+            round(tool_gb.get(name, 0), 1) for name in by_tool.index
+        ],
+    })
+    itables.show(
+        tool_table,
+        classes="display nowrap cell-border",
+        columnDefs=[{"className": "dt-left", "targets": "_all"}],
+        order=[[1, "desc"]],
+        paging=False,
+        scrollX=True,
+        # Only the first 10 rows show by default; the rest scroll within
+        # the table itself rather than lengthening the page.
+        scrollY="380px",
+        scrollCollapse=True,
+        # itables' default style is "width:auto;margin:auto", which leaves
+        # this table (few, narrow columns) floating with empty space beside
+        # it in the page's wide layout - stretch it to fill instead.
+        style="width:100%",
+    )
 ```
