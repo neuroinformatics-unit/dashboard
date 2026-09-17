@@ -225,6 +225,13 @@ tools = _read(
     TOOL_PARQUET_PATH,
     ["date", "tool", "requests", "bytes_sent", "manifest_requests"],
 )
+# These four classify_client() outcomes (see atlas_logs/parser.py) are all
+# "not a recognised client", just via different fallback paths - lump them
+# together rather than showing four near-empty catch-all rows.
+tools["tool"] = tools["tool"].replace(
+    {name: "other/unknown" for name in
+     ("other", "other web viewer", "bot / crawler", "unknown")}
+)
 has_data = not usage.empty
 
 state = json.loads(STATE_PATH.read_text()) if STATE_PATH.exists() else {}
@@ -260,10 +267,7 @@ if has_data:
 
     by_atlas = (
         annotations.groupby("atlas")
-        .agg(
-            requests=("requests", "sum"),
-            gb=("bytes_sent", lambda s: s.sum() / GB),
-        )
+        .agg(requests=("requests", "sum"))
         .sort_values("requests", ascending=False)
     )
     by_atlas["manifest_opens"] = (
@@ -281,14 +285,14 @@ if has_data:
         .sum()
         .sort_values(ascending=False)
     )
-    by_country_gb = countries.groupby("country")["bytes_sent"].sum() / GB
     by_resource = (
         usage.groupby("resource")["requests"].sum().sort_values(ascending=False)
     )
-    by_resource_gb = usage.groupby("resource")["bytes_sent"].sum() / GB
     by_tool = (
         tools.groupby("tool")["requests"].sum().sort_values(ascending=False)
     )
+    # Kept for the static "Client tool breakdown" table below - the
+    # interactive explorer's chart no longer offers a "GB served" toggle.
     tool_gb = tools.groupby("tool")["bytes_sent"].sum() / GB
     by_day = (
         usage.groupby("date")
@@ -307,17 +311,8 @@ if has_data:
             .reindex(by_day.index, fill_value=0)
             .reindex(columns=by_tool.index)
         )
-        tool_bytes_daily = (
-            tools.pivot_table(
-                index="date", columns="tool", values="bytes_sent",
-                aggfunc="sum", fill_value=0,
-            )
-            .reindex(by_day.index, fill_value=0)
-            .reindex(columns=by_tool.index)
-        )
     else:
         tool_daily = pd.DataFrame(index=by_day.index)
-        tool_bytes_daily = pd.DataFrame(index=by_day.index)
 
     total_requests = int(usage["requests"].sum())
     total_bytes = int(usage["bytes_sent"].sum())
@@ -343,15 +338,10 @@ if has_data:
         )
         return {str(col): pivot[col].tolist() for col in pivot.columns}
 
-    def _gb(d):
-        return {k: [round(v / GB, 3) for v in vs] for k, vs in d.items()}
-
     atlas_daily = _daily_lookup(annotations, "atlas", "requests")
     atlas_manifest_daily = _daily_lookup(annotation_manifests, "atlas", "requests")
-    atlas_gb_daily = _gb(_daily_lookup(annotations, "atlas", "bytes_sent"))
 
     resource_daily = _daily_lookup(usage, "resource", "requests")
-    resource_gb_daily = _gb(_daily_lookup(usage, "resource", "bytes_sent"))
     # "Manifest opens" per resource *category*: a "<type>-manifest" row is
     # entirely manifest opens (so its own requests figure, unchanged); every
     # other row (annotation, packaged-atlas, ...) excludes manifest fetches
@@ -369,7 +359,6 @@ if has_data:
     )
 
     country_daily = _daily_lookup(countries, "country", "requests")
-    country_gb_daily = _gb(_daily_lookup(countries, "country", "bytes_sent"))
     # Country/tool have no resource dimension, so "manifest opens" here means
     # *any* resource type's group-root zarr.json (annotation, template, ...)
     # - broader than the atlas chart's annotation-only manifest opens.
@@ -380,15 +369,10 @@ if has_data:
         str(col): tool_daily[col].fillna(0).astype(int).tolist()
         for col in tool_daily.columns
     }
-    tool_gb_daily_lookup = {
-        str(col): [round(v / GB, 3) for v in tool_bytes_daily[col].fillna(0).tolist()]
-        for col in tool_bytes_daily.columns
-    }
     tool_manifest_daily = _daily_lookup(tools, "tool", "manifest_requests")
     by_tool_manifest = tools.groupby("tool")["manifest_requests"].sum()
 
     total_daily = by_day["requests"].astype(int).tolist()
-    total_gb_daily = [round(v / GB, 3) for v in by_day["bytes_sent"].tolist()]
     total_manifest_daily = (
         annotation_manifests.groupby("date")["requests"]
         .sum()
@@ -448,12 +432,12 @@ if has_data:
 if has_data:
     import itables
 
-    table = by_atlas.reset_index()[["name", "requests", "manifest_opens", "gb"]]
-    table.columns = ["Atlas", "Requests", "Manifest opens", "Data served (GB)"]
-    table["Data served (GB)"] = table["Data served (GB)"].round(1)
+    table = by_atlas.reset_index()[["name", "requests", "manifest_opens"]]
+    table.columns = ["Atlas", "Requests", "Manifest opens"]
     itables.show(
         table,
         classes="display nowrap cell-border",
+        style="table-layout:auto;width:100%;caption-side:bottom",
         columnDefs=[{"className": "dt-left", "targets": "_all"}],
         order=[[1, "desc"]],
         paging=False,
@@ -471,7 +455,7 @@ if has_data:
 # | label: explorer
 if has_data:
     metric_selector = RadioButtonGroup(
-        labels=["Requests", "Manifest opens", "GB served"], active=0
+        labels=["Requests", "Manifest opens"], active=0
     )
     view_selector = RadioButtonGroup(labels=["Combined", "By tool"], active=0)
     caption = Div(
@@ -509,7 +493,6 @@ if has_data:
             y=tool_daily[name].tolist(),
             y_requests=tool_daily[name].tolist(),
             y_manifest=tool_manifest_daily.get(str(name), [0] * len(tool_dates)),
-            y_gb=[round(v / GB, 3) for v in tool_bytes_daily[name].tolist()],
         ))
         tool_line_sources.append(src)
         tool_renderers.append(ts_fig.line(
@@ -546,7 +529,7 @@ if has_data:
     metric_selector.js_on_change("active", CustomJS(
         args=dict(sources=tool_line_sources),
         code="""
-        const keys = ['y_requests', 'y_manifest', 'y_gb'];
+        const keys = ['y_requests', 'y_manifest'];
         const key = keys[cb_obj.active];
         for (const src of sources) {
             src.data['y'] = src.data[key];
@@ -563,8 +546,6 @@ if has_data:
          top_atlas["requests"].tolist(), atlas_daily, total_daily),
         ("manifest", "Manifest opens", "manifest opens / day",
          top_atlas["manifest_opens"].tolist(), atlas_manifest_daily, total_manifest_daily),
-        ("gb", "GB served", "GB / day",
-         top_atlas["gb"].round(2).tolist(), atlas_gb_daily, total_gb_daily),
     ]
     atlas_fig, atlas_source = _bar_figure(
         [display_name(k) for k in top_atlas.index],
@@ -581,9 +562,6 @@ if has_data:
         ("manifest", "Manifest opens", "manifest opens / day",
          by_country_manifest.reindex(top_country.index, fill_value=0).tolist(),
          country_manifest_daily, total_manifest_all_daily),
-        ("gb", "GB served", "GB / day",
-         by_country_gb.reindex(top_country.index, fill_value=0).round(2).tolist(),
-         country_gb_daily, total_gb_daily),
     ]
     country_fig, country_source = _bar_figure(
         list(top_country.index), list(top_country.index), country_metrics,
@@ -598,9 +576,6 @@ if has_data:
         ("manifest", "Manifest opens", "manifest opens / day",
          by_resource_manifest.reindex(resource_sorted.index, fill_value=0).tolist(),
          resource_manifest_daily, total_manifest_all_daily),
-        ("gb", "GB served", "GB / day",
-         by_resource_gb.reindex(resource_sorted.index, fill_value=0).round(2).tolist(),
-         resource_gb_daily, total_gb_daily),
     ]
     resource_fig, resource_source = _bar_figure(
         list(resource_sorted.index), list(resource_sorted.index), resource_metrics,
@@ -615,9 +590,6 @@ if has_data:
         ("manifest", "Manifest opens", "manifest opens / day",
          by_tool_manifest.reindex(tool_sorted.index, fill_value=0).tolist(),
          tool_manifest_daily, total_manifest_all_daily),
-        ("gb", "GB served", "GB / day",
-         tool_gb.reindex(tool_sorted.index, fill_value=0).round(2).tolist(),
-         tool_gb_daily_lookup, total_gb_daily),
     ]
     tool_fig, tool_source = _bar_figure(
         list(tool_sorted.index), list(tool_sorted.index), tool_metrics,
@@ -680,7 +652,7 @@ if has_data and not by_tool.empty:
     tool_table = pd.DataFrame({
         "Client tool": by_tool.index,
         "Requests": by_tool.values,
-        "Share": [f"{r / total * 100:.1f}%" for r in by_tool.values],
+        "Share of requests": [f"{r / total * 100:.1f}%" for r in by_tool.values],
         "Data served (GB)": [
             round(tool_gb.get(name, 0), 1) for name in by_tool.index
         ],
