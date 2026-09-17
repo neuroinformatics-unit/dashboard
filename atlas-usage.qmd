@@ -9,28 +9,8 @@ execute:
   warning: false
 ---
 
-How much the **public BrainGlobe atlas data** is being requested, derived from
-the S3 server access logs of the atlas bucket. Only successful object
-requests (`REST.GET.OBJECT`, HTTP 200/206) are counted. Totals are
-cumulative since logging began and grow a little every day.
-
-Each atlas is served as several resources — an annotation volume, one or more
-reference/template images, a terminology, a packaged download, neuroglancer
-state — under separate key namespaces. Only the annotation keys carry the
-canonical atlas name, so the **per-atlas table and charts below count
-annotation-set requests**; the other resource types are summarised together
-under "by resource type".
-
-The atlas, country and client-tool breakdowns are stored as three independent
-tables (`atlas_usage.parquet`, `atlas_usage_by_country.parquet`,
-`atlas_usage_by_tool.parquet`), so there is no per-atlas country or tool
-split — the country and tool figures cover all requests.
-
-The **client tool** is inferred from each request's `Referer` and
-`User-Agent`: the browser viewers (neuroglancer, Pinpoint) set a recognisable
-`Referer`; library/CLI clients are told apart by `User-Agent`, with
-`aiobotocore`/`botocore` (i.e. `s3fs` + `zarr`) attributed to
-`brainglobe-atlasapi`.
+How the public BrainGlobe atlas data is being used - see [About](about.qmd)
+for what each metric means.
 
 ```{python}
 # | label: load
@@ -463,14 +443,6 @@ if has_data:
 
 ## Requests by atlas
 
-**Manifest opens** counts only the one metadata fetch (`zarr.json`) a client
-makes when it *opens* an atlas's annotation store, not the many
-resolution/chunk files it then reads - so unlike raw request counts, it
-isn't skewed by array size or how much of the array a given client actually
-pulls, making it the closer proxy for "how many times has this atlas been
-downloaded." Sort by that column instead of "Requests" for a popularity
-ranking; it's also selectable as a metric on the atlas chart below.
-
 ```{python}
 # | label: table
 if has_data:
@@ -494,24 +466,6 @@ if has_data:
 ```
 
 ## Explore interactively
-
-The **metric** toggle controls every chart below: **Requests**, **Manifest
-opens** or **GB served**. Note that "manifest opens" means something
-slightly narrower for atlas specifically - only its annotation store's
-opens (the popularity proxy from the note above) - versus country/tool/
-resource type, where it covers a store opening of *any* resource type,
-since those breakdowns don't carry a resource dimension to narrow it
-further (for "by resource type", switching to manifest opens shows only
-the `<type>-manifest` rows - the others are zero there by construction,
-since manifest fetches get their own row rather than being folded into
-e.g. `annotation`). Click a bar to see *that slice's own* daily trend, in
-whichever metric is selected, in the time series above; click the bar
-again, or switch metric, to reset back to the overall total.
-
-The **view** toggle switches the time series itself between a single
-**combined** line (the overall total, or whatever bar you've drilled into)
-and **by tool** - the top 6 client tools plotted separately, in the same
-metric, with a clickable legend to isolate one.
 
 ```{python}
 # | label: explorer
