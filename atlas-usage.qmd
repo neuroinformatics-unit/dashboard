@@ -39,7 +39,7 @@ import json
 
 import pandas as pd
 from bokeh.io import output_notebook, show
-from bokeh.layouts import column, gridplot
+from bokeh.layouts import column, gridplot, row
 from bokeh.models import ColumnDataSource, CustomJS, Div, RadioButtonGroup
 from bokeh.plotting import figure
 from bokeh.resources import INLINE
@@ -495,18 +495,23 @@ if has_data:
 
 ## Explore interactively
 
-One toggle controls every chart below: **Requests**, **Manifest opens** or
-**GB served**. Note that "manifest opens" means something slightly narrower
-for atlas specifically - only its annotation store's opens (the popularity
-proxy from the note above) - versus country/tool/resource type, where it
-covers a store opening of *any* resource type, since those breakdowns don't
-carry a resource dimension to narrow it further (for "by resource type",
-switching to manifest opens shows only the `<type>-manifest` rows - the
-others are zero there by construction, since manifest fetches get their own
-row rather than being folded into e.g. `annotation`). Click a bar to see
-*that slice's own* daily trend, in whichever metric is selected, in the
-time series above; click the bar again, or switch metric, to reset back to
-the overall total.
+The **metric** toggle controls every chart below: **Requests**, **Manifest
+opens** or **GB served**. Note that "manifest opens" means something
+slightly narrower for atlas specifically - only its annotation store's
+opens (the popularity proxy from the note above) - versus country/tool/
+resource type, where it covers a store opening of *any* resource type,
+since those breakdowns don't carry a resource dimension to narrow it
+further (for "by resource type", switching to manifest opens shows only
+the `<type>-manifest` rows - the others are zero there by construction,
+since manifest fetches get their own row rather than being folded into
+e.g. `annotation`). Click a bar to see *that slice's own* daily trend, in
+whichever metric is selected, in the time series above; click the bar
+again, or switch metric, to reset back to the overall total.
+
+The **view** toggle switches the time series itself between a single
+**combined** line (the overall total, or whatever bar you've drilled into)
+and **by tool** - the top 6 client tools plotted separately, in the same
+metric, with a clickable legend to isolate one.
 
 ```{python}
 # | label: explorer
@@ -514,6 +519,7 @@ if has_data:
     metric_selector = RadioButtonGroup(
         labels=["Requests", "Manifest opens", "GB served"], active=0
     )
+    view_selector = RadioButtonGroup(labels=["Combined", "By tool"], active=0)
     caption = Div(
         text="Showing <b>all requests</b> &mdash; click a bar below to drill in",
         styles={"color": INK, "font-size": "0.85rem"},
@@ -522,19 +528,78 @@ if has_data:
     ts_source = ColumnDataSource(data=dict(x=list(by_day.index), y=total_daily))
     ts_fig = figure(
         x_axis_type="datetime",
-        height=260,
+        height=280,
         sizing_mode="stretch_width",
         tools="hover,reset,xpan,xwheel_zoom",
         toolbar_location="above",
         title="Over time",
     )
-    ts_fig.line("x", "y", source=ts_source, color=GREEN, line_width=2)
-    ts_fig.hover.tooltips = [("date", "@x{%F}"), ("value", "@y{0,0.[00]}")]
+    total_renderer = ts_fig.line(
+        "x", "y", source=ts_source, color=GREEN, line_width=2, name="Total"
+    )
+
+    # The per-tool lines share this figure, toggled by view_selector rather
+    # than being a separate chart - hidden (and their legend with them)
+    # until "By tool" is selected.
+    top_tool_cols = list(tool_daily.sum().sort_values(ascending=False).index[:6])
+    # Fixed hue order, checked with the design system's CVD-separation
+    # validator (adjacent pairs pass in this order); a plain grey read as
+    # colourless and failed, hence BROWN as the 6th hue instead of INK.
+    tool_palette = [GREEN, BLUE, ORANGE, PURPLE, PINK, BROWN]
+    tool_dates = list(tool_daily.index)
+    tool_line_sources = []
+    tool_renderers = []
+    for name, color in zip(top_tool_cols, tool_palette):
+        src = ColumnDataSource(data=dict(
+            x=tool_dates,
+            y=tool_daily[name].tolist(),
+            y_requests=tool_daily[name].tolist(),
+            y_manifest=tool_manifest_daily.get(str(name), [0] * len(tool_dates)),
+            y_gb=[round(v / GB, 3) for v in tool_bytes_daily[name].tolist()],
+        ))
+        tool_line_sources.append(src)
+        tool_renderers.append(ts_fig.line(
+            "x", "y", source=src, color=color, line_width=2,
+            legend_label=str(name), name=str(name), visible=False,
+        ))
+
+    ts_fig.hover.tooltips = [("date", "@x{%F}"), ("tool", "$name"), ("value", "@y{0,0.[00]}")]
     ts_fig.hover.formatters = {"@x": "datetime"}
     ts_fig.hover.mode = "vline"
     ts_fig.yaxis.axis_label = "requests / day"
     ts_fig.y_range.start = 0
+    ts_fig.legend.click_policy = "hide"
+    ts_fig.legend.location = "top_left"
+    ts_fig.legend.background_fill_alpha = 0
+    ts_fig.legend.border_line_alpha = 0
+    ts_fig.legend.label_text_color = INK
+    ts_fig.legend.visible = False
     _style(ts_fig)
+
+    view_selector.js_on_change("active", CustomJS(
+        args=dict(
+            total_renderer=total_renderer,
+            tool_renderers=tool_renderers,
+            legend=ts_fig.legend[0],
+        ),
+        code="""
+        const byTool = cb_obj.active === 1;
+        total_renderer.visible = !byTool;
+        for (const r of tool_renderers) { r.visible = byTool; }
+        legend.visible = byTool;
+        """,
+    ))
+    metric_selector.js_on_change("active", CustomJS(
+        args=dict(sources=tool_line_sources),
+        code="""
+        const keys = ['y_requests', 'y_manifest', 'y_gb'];
+        const key = keys[cb_obj.active];
+        for (const src of sources) {
+            src.data['y'] = src.data[key];
+            src.change.emit();
+        }
+        """,
+    ))
 
     top_atlas = (
         by_atlas[by_atlas.index != "unclassified"].head(15).sort_values("requests")
@@ -635,7 +700,8 @@ if has_data:
         sizing_mode="stretch_width",
         toolbar_location=None,
     )
-    show(column(metric_selector, caption, ts_fig, grid, sizing_mode="stretch_width"))
+    controls = row(metric_selector, view_selector, sizing_mode="stretch_width")
+    show(column(controls, caption, ts_fig, grid, sizing_mode="stretch_width"))
 ```
 
 ```{python}
@@ -647,71 +713,6 @@ if has_data and unresolved_countries and country_total:
         f"*{unresolved_countries:,} requests ({pct:.1f}%) came from IPs "
         f"that could not be resolved to a country.*"
     )
-```
-
-## Per day by client tool
-
-```{python}
-# | label: tool-over-time
-if has_data and not tool_daily.empty and tool_daily.shape[0] > 1:
-    top_cols = list(tool_daily.sum().sort_values(ascending=False).index[:6])
-    # Fixed hue order, checked with the design system's CVD-separation
-    # validator (adjacent pairs pass in this order); a plain grey read as
-    # colourless and failed, hence BROWN as the 6th hue instead of INK.
-    palette = [GREEN, BLUE, ORANGE, PURPLE, PINK, BROWN]
-
-    fig = figure(
-        x_axis_type="datetime",
-        height=380,
-        sizing_mode="stretch_width",
-        tools="hover,reset,xpan,xwheel_zoom",
-        toolbar_location="above",
-        title="Per day by client tool (top 6) — click a legend entry to isolate it",
-    )
-    dates = list(tool_daily.index)
-    line_sources = []
-    for name, color in zip(top_cols, palette):
-        src = ColumnDataSource(data=dict(
-            x=dates,
-            y=tool_daily[name].tolist(),
-            y_requests=tool_daily[name].tolist(),
-            y_manifest=tool_manifest_daily.get(str(name), [0] * len(dates)),
-            y_gb=[round(v / GB, 3) for v in tool_bytes_daily[name].tolist()],
-        ))
-        line_sources.append(src)
-        fig.line(
-            "x", "y", source=src, color=color, line_width=2,
-            legend_label=str(name), name=str(name),
-        )
-    fig.legend.click_policy = "hide"
-    fig.legend.location = "top_left"
-    fig.legend.background_fill_alpha = 0
-    fig.legend.border_line_alpha = 0
-    fig.legend.label_text_color = INK
-    fig.y_range.start = 0
-    fig.yaxis.axis_label = "requests / day"
-    fig.hover.tooltips = [("tool", "$name"), ("date", "@x{%F}"), ("value", "@y{0,0.[00]}")]
-    fig.hover.formatters = {"@x": "datetime"}
-    fig.hover.mode = "vline"
-    _style(fig)
-
-    tool_selector = RadioButtonGroup(
-        labels=["Requests", "Manifest opens", "GB served"], active=0
-    )
-    tool_selector.js_on_change("active", CustomJS(
-        args=dict(sources=line_sources, fig_yaxis=fig.yaxis[0]),
-        code="""
-        const keys = ['y_requests', 'y_manifest', 'y_gb'];
-        const labels = ['requests / day', 'manifest opens / day', 'GB / day'];
-        const key = keys[cb_obj.active];
-        for (const src of sources) {
-            src.data['y'] = src.data[key];
-            src.change.emit();
-        }
-        fig_yaxis.axis_label = labels[cb_obj.active];
-        """,
-    ))
-    show(column(fig, tool_selector, sizing_mode="stretch_width"))
 ```
 
 ## Client tool breakdown
