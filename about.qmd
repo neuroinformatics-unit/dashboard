@@ -30,3 +30,19 @@ The Dashboard is currently a snapshot of data from the **SWC/GCNU Neuroinformati
 
 `Issue Response Average Age:` Average response time of issues that has a response. If the issue response age is zero (meaning there are no comments), we display "N/A". If the first response is by the creator of the issue the comment is not counted. Calculation is Issues Total Response Time divide by Total Issues
 
+### Atlas Usage Metrics and Definitions
+
+The [Atlas usage](atlas-usage.qmd) page tracks how the public BrainGlobe atlas data is downloaded, based on the atlas bucket's S3 server access logs.
+
+`Requests:` A successful download of an atlas file (an HTTP GET that returned the file's contents). Requests aren't a 1:1 proxy for "an atlas was downloaded" - large atlases are split into many chunk files, each counted separately, so larger atlases may lead to more requests regardless of how many people actually used them.
+
+`Manifest requests:` The manifest is a single file that corresponds to a specific atlas. Not all clients will fetch this data, but it is a good proxy for popularity within e.g. the BrainGlobe Atlas API.
+
+`Data served:` Total data transferred, in GB or TB.
+
+`Resource type:` Which part of an atlas a request was for - the annotation volume, a per-region mesh, a reference/template image, a terminology, a coordinate space, an atlas's own manifest, or a neuroglancer state file. Atlas popularity is counted from annotation requests only, since that's the one resource type that's meaningfully identified per-atlas.
+
+`Client tool:` The software inferred to have made a request (e.g. `brainglobe-atlasapi`, `neuroglancer`, `Pinpoint`, a browser, or a custom script), based on the request's `Referer` and `User-Agent` headers. This is an inference, not a verified identity: it assumes any request made with the same underlying library the Atlas API uses (`s3fs`/`boto3`) came from the Atlas API, so an unrelated script using that library directly would be misattributed to it.
+
+`Country:` Geolocated from the requester's IP address. Requests from IPs that can't be resolved to a country are counted separately rather than dropped or misattributed.
+

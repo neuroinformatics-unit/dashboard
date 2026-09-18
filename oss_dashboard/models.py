@@ -37,7 +37,6 @@ class RepositoryResult:
     monthly_download_count: int = 0
     weekly_download_count: int = 0
     daily_download_count: int = 0
-    contributors_count: int = 0
     conda_total_downloads: int = 0
     conda_monthly_downloads: int = 0
 
