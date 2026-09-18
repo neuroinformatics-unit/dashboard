@@ -1,9 +1,9 @@
 """Incremental analytics for the public BrainGlobe atlas S3 bucket.
 
-The public atlas data is served from an AWS S3 bucket with server access
+The public atlas data is served from an AWS S3 bucket (s3://brainglobe) with server access
 logging enabled. Those raw access logs are delivered to a dedicated log
-bucket. This package reads *new* log objects on each run (tracked with a
-cursor), parses them, maps client IPs to countries, and appends
+bucket (s3://brainglobe-logs). This package reads *new* log objects on each run,
+parses them, maps client IPs to countries, and appends
 per-day / per-atlas / per-country totals to a Parquet file that is
 committed to the repository and rendered by ``atlas-usage.qmd``.
 
