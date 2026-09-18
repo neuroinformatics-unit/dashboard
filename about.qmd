@@ -42,7 +42,7 @@ The [Atlas usage](atlas-usage.qmd) page tracks how the public BrainGlobe atlas d
 
 `Resource type:` Which part of an atlas a request was for - the annotation volume, a reference/template image, a terminology, a packaged download, or a neuroglancer state file. Atlas popularity is counted from annotation requests only, since that's the one resource type that's meaningfully identified per-atlas.
 
-`Client tool:` The software inferred to have made a request (e.g. `brainglobe-atlasapi`, `neuroglancer`, `Pinpoint`, a browser, or a custom script), based on the request's `Referer` and `User-Agent` headers.
+`Client tool:` The software inferred to have made a request (e.g. `brainglobe-atlasapi`, `neuroglancer`, `Pinpoint`, a browser, or a custom script), based on the request's `Referer` and `User-Agent` headers. This is an inference, not a verified identity: it assumes any request made with the same underlying library the Atlas API uses (`s3fs`/`boto3`) came from the Atlas API, so an unrelated script using that library directly would be misattributed to it.
 
 `Country:` Geolocated from the requester's IP address. Requests from IPs that can't be resolved to a country are counted separately rather than dropped or misattributed.
 

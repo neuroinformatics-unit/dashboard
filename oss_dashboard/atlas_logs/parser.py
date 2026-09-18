@@ -149,17 +149,22 @@ def classify_client(referer: str, user_agent: str) -> str:
         return "other web viewer"
 
     # Specific tools first - some library UAs contain "bot" (aiobotocore!),
-    # so the generic bot check has to come after them.
+    # so the generic bot check has to come after them. aws-cli/aws-sdk have
+    # to come before the aiobotocore/botocore check too: aws-cli v2's own
+    # UA embeds botocore's version (e.g. "... md/Botocore#1.34.51 ...
+    # botocore/1.34.51"), since the CLI is itself built on botocore - so
+    # checking the generic substring first would swallow real CLI traffic
+    # into "brainglobe-atlasapi".
     if "brainrender" in ua:
         return "brainrender"
-    if any(s in ua for s in ("aiobotocore", "botocore", "boto3", "s3fs")):
-        return "brainglobe-atlasapi"
-    if "pooch" in ua:
-        return "brainglobe-atlasapi"
     if ua.startswith("aws-cli"):
         return "aws-cli"
     if "aws-sdk" in ua:
         return "aws-sdk (other language)"
+    if any(s in ua for s in ("aiobotocore", "botocore", "boto3", "s3fs")):
+        return "brainglobe-atlasapi"
+    if "pooch" in ua:
+        return "brainglobe-atlasapi"
     if "object_store" in ua:
         return "object_store (rust)"
     if any(s in ua for s in ("python-requests", "urllib", "aiohttp", "httpx")):

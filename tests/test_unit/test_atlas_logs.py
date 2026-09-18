@@ -200,6 +200,13 @@ def test_classify_key(key, expected):
         ("-", "python-requests/2.34.2", "python script"),
         ("-", "curl/8.4.0", "curl / wget"),
         ("-", "aws-cli/2.15.0 Python/3.11", "aws-cli"),
+        (
+            "-",
+            "aws-cli/2.15.0 md/Botocore#1.34.51 ua/2.0 os/linux#5.15.0 "
+            "md/arch#x86_64 lang/python#3.11.6 md/pyimpl#CPython "
+            "cfg/retry-mode#standard botocore/1.34.51",
+            "aws-cli",
+        ),
         ("-", "aws-sdk-go/1.55.5 (go1.22)", "aws-sdk (other language)"),
         ("-", "object_store/0.11.0", "object_store (rust)"),
         ("-", "node", "node.js"),
