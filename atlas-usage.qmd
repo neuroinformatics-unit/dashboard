@@ -92,6 +92,9 @@ def _bar_figure(labels, keys, metrics, *, title, color):
         y_range=list(labels),
         height=max(170, 26 * len(labels)),
         sizing_mode="stretch_width",
+        # Refuses to shrink past this, so the two-per-row layout below wraps
+        # to one chart per row on narrow screens instead of squashing both.
+        min_width=320,
         tools="tap,hover,reset",
         toolbar_location=None,
         title=title,
@@ -301,7 +304,7 @@ if has_data:
         .agg(requests=("requests", "sum"))
         .sort_values("requests", ascending=False)
     )
-    by_atlas["manifest_opens"] = (
+    by_atlas["manifest_requests"] = (
         annotation_manifests.groupby("atlas")["requests"]
         .sum()
         .reindex(by_atlas.index, fill_value=0)
@@ -373,10 +376,10 @@ if has_data:
     atlas_manifest_daily = _daily_lookup(annotation_manifests, "atlas", "requests")
 
     resource_daily = _daily_lookup(usage, "resource", "requests")
-    # "Manifest opens" per resource *category*: a "<type>-manifest" row is
-    # entirely manifest opens (so its own requests figure, unchanged); every
-    # other row (annotation, packaged-atlas, ...) excludes manifest fetches
-    # by construction (they get their own row), so it's zero there.
+    # "Manifest requests" per resource *category*: a "<type>-manifest" row
+    # is entirely manifest requests (so its own requests figure, unchanged);
+    # every other row (annotation, packaged-atlas, ...) excludes manifest
+    # fetches by construction (they get their own row), so it's zero there.
     zero_daily = [0] * len(by_day.index)
     resource_manifest_daily = {
         str(r): (resource_daily[str(r)] if str(r).endswith("-manifest") else zero_daily)
@@ -390,9 +393,10 @@ if has_data:
     )
 
     country_daily = _daily_lookup(countries, "country", "requests")
-    # Country/tool have no resource dimension, so "manifest opens" here means
-    # *any* resource type's group-root zarr.json (annotation, template, ...)
-    # - broader than the atlas chart's annotation-only manifest opens.
+    # Country/tool have no resource dimension, so "manifest requests" here
+    # means *any* resource type's group-root zarr.json (annotation,
+    # template, ...) - broader than the atlas chart's annotation-only
+    # manifest requests.
     country_manifest_daily = _daily_lookup(countries, "country", "manifest_requests")
     by_country_manifest = countries.groupby("country")["manifest_requests"].sum()
 
@@ -463,8 +467,8 @@ if has_data:
 if has_data:
     import itables
 
-    table = by_atlas.reset_index()[["name", "requests", "manifest_opens"]]
-    table.columns = ["Atlas", "Requests", "Manifest opens"]
+    table = by_atlas.reset_index()[["name", "requests", "manifest_requests"]]
+    table.columns = ["Atlas", "Requests", "Manifest requests"]
     itables.show(
         table,
         classes="display nowrap cell-border",
@@ -486,7 +490,7 @@ if has_data:
 # | label: explorer
 if has_data:
     metric_selector = RadioButtonGroup(
-        labels=["Total requests", "Total manifest opens"], active=0
+        labels=["Total requests", "Total manifest requests"], active=0
     )
     caption = Div(
         text="Showing <b>all total requests</b> &mdash; click a bar below to drill in",
@@ -520,8 +524,8 @@ if has_data:
     atlas_metrics = [
         ("requests", "Total requests", "total requests", "requests / day",
          top_atlas["requests"].tolist(), atlas_daily, total_daily),
-        ("manifest", "Total manifest opens", "total manifest opens", "manifest opens / day",
-         top_atlas["manifest_opens"].tolist(), atlas_manifest_daily, total_manifest_daily),
+        ("manifest", "Total manifest requests", "total manifest requests", "manifest requests / day",
+         top_atlas["manifest_requests"].tolist(), atlas_manifest_daily, total_manifest_daily),
     ]
     atlas_fig, atlas_source = _bar_figure(
         [display_name(k) for k in top_atlas.index],
@@ -535,7 +539,7 @@ if has_data:
     country_metrics = [
         ("requests", "Total requests", "total requests", "requests / day",
          top_country.tolist(), country_daily, total_daily),
-        ("manifest", "Total manifest opens", "total manifest opens", "manifest opens / day",
+        ("manifest", "Total manifest requests", "total manifest requests", "manifest requests / day",
          by_country_manifest.reindex(top_country.index, fill_value=0).tolist(),
          country_manifest_daily, total_manifest_all_daily),
     ]
@@ -549,7 +553,7 @@ if has_data:
     resource_metrics = [
         ("requests", "Total requests", "total requests", "requests / day",
          resource_sorted.tolist(), resource_daily, total_daily),
-        ("manifest", "Total manifest opens", "total manifest opens", "manifest opens / day",
+        ("manifest", "Total manifest requests", "total manifest requests", "manifest requests / day",
          by_resource_manifest.reindex(resource_sorted.index, fill_value=0).tolist(),
          resource_manifest_daily, total_manifest_all_daily),
     ]
@@ -563,7 +567,7 @@ if has_data:
     tool_metrics = [
         ("requests", "Total requests", "total requests", "requests / day",
          tool_sorted.tolist(), tool_daily_lookup, total_daily),
-        ("manifest", "Total manifest opens", "total manifest opens", "manifest opens / day",
+        ("manifest", "Total manifest requests", "total manifest requests", "manifest requests / day",
          by_tool_manifest.reindex(tool_sorted.index, fill_value=0).tolist(),
          tool_manifest_daily, total_manifest_all_daily),
     ]
@@ -584,7 +588,7 @@ if has_data:
         ts_source=ts_source, ts_fig=ts_fig, caption=caption,
     )
 
-    # "Manifest opens by resource type" is mostly zero with a few echoes
+    # "Manifest requests by resource type" is mostly zero with a few echoes
     # (see the resource_manifest_daily comment above): every non-"-manifest"
     # row is zero and every "-manifest" row just repeats its own request
     # count, so it adds no information under that metric. Hide the whole
@@ -603,12 +607,18 @@ if has_data:
         atlas_fig,
         height=300,
         sizing_mode="stretch_width",
+        min_width=320,
         styles={"overflow-y": "auto", "border": f"1px solid {GRID}", "border-radius": "4px"},
     )
 
+    # flex-wrap lets each row drop to one chart per line on narrow screens
+    # (below ~2 * 320px) instead of squashing both charts to fit side by
+    # side - the min_width above is what makes a chart refuse to shrink
+    # past the point where it'd need to wrap.
+    row_styles = {"flex-wrap": "wrap"}
     grid = column(
-        row(atlas_panel, country_fig, sizing_mode="stretch_width"),
-        row(resource_fig, tool_fig, sizing_mode="stretch_width"),
+        row(atlas_panel, country_fig, sizing_mode="stretch_width", styles=row_styles),
+        row(resource_fig, tool_fig, sizing_mode="stretch_width", styles=row_styles),
         sizing_mode="stretch_width",
     )
     show(column(metric_selector, caption, ts_fig, grid, sizing_mode="stretch_width"))

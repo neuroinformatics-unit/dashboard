@@ -36,7 +36,7 @@ The [Atlas usage](atlas-usage.qmd) page tracks how the public BrainGlobe atlas d
 
 `Requests:` A successful download of an atlas file (an HTTP GET that returned the file's contents). Requests aren't a 1:1 proxy for "an atlas was downloaded" - large atlases are split into many chunk files, each counted separately, so larger atlases may lead to more requests regardless of how many people actually used them.
 
-`Manifest opens:` The manifest is a single file that corresponds to a specific atlas. Not all clients will fetch this data, but it is a good proxy for popularity within e.g. the BrainGlobe Atlas API.
+`Manifest requests:` The manifest is a single file that corresponds to a specific atlas. Not all clients will fetch this data, but it is a good proxy for popularity within e.g. the BrainGlobe Atlas API.
 
 `Data served:` Total data transferred, in GB or TB.
 
