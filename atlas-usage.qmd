@@ -37,6 +37,7 @@ from oss_dashboard.atlas_logs.constants import (
     STATE_PATH,
     TOOL_PARQUET_PATH,
 )
+from oss_dashboard.atlas_logs.country_names import display_country
 from oss_dashboard.atlas_logs.tool_names import display_tool
 
 # Embeds BokehJS directly into the page rather than pointing at a CDN, so
@@ -71,7 +72,7 @@ def _style(fig):
     return fig
 
 
-def _bar_figure(labels, keys, metrics, *, title, color):
+def _bar_figure(labels, keys, metrics, *, title, color, tooltip_labels=None):
     """A horizontal bar chart, largest value (in the first metric) at top.
 
     ``metrics`` is ``[(key, button_label, bar_unit, daily_unit, bar_values,
@@ -83,10 +84,22 @@ def _bar_figure(labels, keys, metrics, *, title, color):
     "requests / day", the unit once a bar's own trend is drilled into on the
     linked time series). Call ``_wire_global`` once, across every bar chart,
     to hook them all up to a single shared metric toggle and time series.
+
+    ``labels`` are shown on the y-axis and must be unique/compact (e.g.
+    short country codes); ``tooltip_labels``, if given, are shown in the
+    hover tooltip instead (e.g. the codes' full country names) and default
+    to ``labels`` themselves.
     """
     default_key, _, default_bar_unit, _, default_values, _, _ = metrics[0]
+    if tooltip_labels is None:
+        tooltip_labels = labels
     source = ColumnDataSource(
-        data=dict(label=list(labels), key=list(keys), value=list(default_values))
+        data=dict(
+            label=list(labels),
+            tooltip_label=list(tooltip_labels),
+            key=list(keys),
+            value=list(default_values),
+        )
     )
     fig = figure(
         y_range=list(labels),
@@ -109,7 +122,7 @@ def _bar_figure(labels, keys, metrics, *, title, color):
         selection_fill_color=color,
         nonselection_fill_alpha=0.35,
     )
-    fig.hover.tooltips = [("", "@label"), ("value", "@value{0,0}")]
+    fig.hover.tooltips = [("", "@tooltip_label"), ("value", "@value{0,0}")]
     fig.xaxis.axis_label = default_bar_unit
     # Compact tick labels (500K, 1.1M, ...) computed from the raw value, so
     # the axis stays readable without pre-scaling the data - the hover
@@ -549,6 +562,7 @@ if has_data:
         list(top_country.index), list(top_country.index), country_metrics,
         title="By country (top 15)",
         color=ORANGE,
+        tooltip_labels=[display_country(c) for c in top_country.index],
     )
 
     resource_sorted = by_resource.sort_values()
