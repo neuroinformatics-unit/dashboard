@@ -210,7 +210,15 @@ def test_classify_key(key, expected):
         ("-", "aws-sdk-go/1.55.5 (go1.22)", "aws-sdk (other language)"),
         ("-", "object_store/0.11.0", "object_store (rust)"),
         ("-", "node", "node.js"),
-        ("-", "brainrender-track-export/1.0", "brainrender"),
+        # brainrender has no distinguishing UA of its own - it delegates to
+        # brainglobe-atlasapi's s3fs code path, and unrelated tools that
+        # happen to set this UA aren't brainrender - falls through to
+        # "other" rather than a dedicated (never-really-matching) category.
+        ("-", "brainrender-track-export/1.0", "other"),
+        # Likewise pooch: no brainglobe-atlasapi download path actually uses
+        # it (only an optional maintainer-tooling extra), so it's not a
+        # reliable "brainglobe-atlasapi" signal either.
+        ("-", "pooch/1.8.0", "other"),
         ("-", "Mozilla/5.0 (Macintosh)", "browser (direct)"),
         ("-", "-", "unknown"),
         ("-", "facebookexternalhit/1.1", "bot / crawler"),

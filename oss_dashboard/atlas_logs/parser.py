@@ -155,15 +155,11 @@ def classify_client(referer: str, user_agent: str) -> str:
     # botocore/1.34.51"), since the CLI is itself built on botocore - so
     # checking the generic substring first would swallow real CLI traffic
     # into "brainglobe-atlasapi".
-    if "brainrender" in ua:
-        return "brainrender"
     if ua.startswith("aws-cli"):
         return "aws-cli"
     if "aws-sdk" in ua:
         return "aws-sdk (other language)"
     if any(s in ua for s in ("aiobotocore", "botocore", "boto3", "s3fs")):
-        return "brainglobe-atlasapi"
-    if "pooch" in ua:
         return "brainglobe-atlasapi"
     if "object_store" in ua:
         return "object_store (rust)"
@@ -178,6 +174,9 @@ def classify_client(referer: str, user_agent: str) -> str:
         for s in ("bot", "crawler", "spider", "slurp", "facebookexternalhit")
     ) or ua.startswith("google-"):
         return "bot / crawler"
+    # Every mainstream browser's UA starts with "Mozilla/5.0" (a decades-old
+    # compatibility convention) - this is the catch-all for real browsers
+    # hitting the bucket directly, not just one specific browser.
     if "mozilla" in ua:
         return "browser (direct)"
     if ua in ("-", ""):
@@ -188,7 +187,7 @@ def classify_client(referer: str, user_agent: str) -> str:
 def _is_zarr_group_manifest(parts: list[str]) -> bool:
     """True for the *group-root* ``zarr.json`` of an OME-Zarr store.
 
-    A client fetches this once per store it opens, regardless of how much
+    A client often fetches this once per store it opens, regardless of how much
     of the array it goes on to read - unlike the per-resolution-level
     ``.../s0/zarr.json`` or nested-array ``.../annotation_values/zarr.json``
     metadata files, and unlike the (many, size-dependent) chunk files under

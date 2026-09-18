@@ -19,7 +19,6 @@ def test_display_tool_merges_catch_all_categories(tool):
         "brainglobe-atlasapi",
         "neuroglancer",
         "pinpoint",
-        "brainrender",
         "local / dev viewer",
         "python script",
         "node.js",
@@ -45,9 +44,7 @@ def test_all_classify_client_outcomes_are_handled():
 
     referer_tools = {tool for _, tool in _REFERER_TOOLS}
     user_agents = [
-        ("-", "brainrender-track-export/1.0"),
         ("-", "aiobotocore/3.9.0"),
-        ("-", "pooch/1.8.0"),
         ("-", "aws-cli/2.0"),
         ("-", "aws-sdk-go/1.55.5"),
         ("-", "object_store/0.10"),
