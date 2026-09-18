@@ -19,7 +19,7 @@ import json
 
 import pandas as pd
 from bokeh.io import output_notebook, show
-from bokeh.layouts import column, gridplot, row
+from bokeh.layouts import column, gridplot
 from bokeh.models import ColumnDataSource, CustomJS, Div, RadioButtonGroup
 from bokeh.plotting import figure
 from bokeh.resources import INLINE
@@ -40,8 +40,6 @@ GREEN = "#03A062"
 BLUE = "#4178f3"
 ORANGE = "#EE9040"
 PURPLE = "#7B61FF"
-PINK = "#E0529C"
-BROWN = "#B4622A"
 # A mid grey that stays legible on both the light and dark site themes.
 INK = "#888888"
 GRID = "#88888840"
@@ -69,14 +67,17 @@ def _style(fig):
 def _bar_figure(labels, keys, metrics, *, title, color):
     """A horizontal bar chart, largest value (in the first metric) at top.
 
-    ``metrics`` is ``[(key, button_label, unit_label, bar_values, daily_lookup,
-    daily_total), ...]`` - the same short ``key`` used throughout to select
-    which of several parallel value sets is currently shown, kept on the
-    chart (and its source) so ``_wire_global`` can look them up later. Call
-    ``_wire_global`` once, across every bar chart, to hook them all up to a
-    single shared metric toggle and time series.
+    ``metrics`` is ``[(key, button_label, bar_unit, daily_unit, bar_values,
+    daily_lookup, daily_total), ...]`` - the same short ``key`` used
+    throughout to select which of several parallel value sets is currently
+    shown, kept on the chart (and its source) so ``_wire_global`` can look
+    them up later. ``bar_unit`` and ``daily_unit`` differ because a bar is a
+    total over the whole window, not a daily rate (e.g. "total requests" vs
+    "requests / day", the unit once a bar's own trend is drilled into on the
+    linked time series). Call ``_wire_global`` once, across every bar chart,
+    to hook them all up to a single shared metric toggle and time series.
     """
-    default_key, _, default_unit, default_values, _, _ = metrics[0]
+    default_key, _, default_bar_unit, _, default_values, _, _ = metrics[0]
     source = ColumnDataSource(
         data=dict(label=list(labels), key=list(keys), value=list(default_values))
     )
@@ -98,8 +99,8 @@ def _bar_figure(labels, keys, metrics, *, title, color):
         selection_fill_color=color,
         nonselection_fill_alpha=0.35,
     )
-    fig.hover.tooltips = [("", "@label"), ("value", "@value{0,0.[00]}")]
-    fig.xaxis.axis_label = default_unit
+    fig.hover.tooltips = [("", "@label"), ("value", "@value{0,0.[000]}")]
+    fig.xaxis.axis_label = default_bar_unit
     fig.x_range.start = 0
     _style(fig)
     return fig, source
@@ -120,13 +121,18 @@ def _wire_global(selector, panels, *, ts_source, ts_fig, caption):
     metric_labels = {m[0]: m[1] for m in panels[0][2]}
     bar_sources = [p[1] for p in panels]
     fig_xaxes = [p[0].xaxis[0] for p in panels]
-    values_lists = [{m[0]: m[3] for m in p[2]} for p in panels]
-    units_lists = [{m[0]: m[2] for m in p[2]} for p in panels]
+    values_lists = [{m[0]: m[4] for m in p[2]} for p in panels]
+    bar_units_lists = [{m[0]: m[2] for m in p[2]} for p in panels]
+    # The time series always shows a daily rate, whether it's the linked
+    # panel's own total-per-day or (after a tap) one entity's daily trend -
+    # unlike the bars, which show a total over the whole window - so it
+    # always takes its axis label from daily_unit, never bar_unit.
+    daily_units_lists = [{m[0]: m[3] for m in p[2]} for p in panels]
     # The reset/total series can differ per panel (e.g. the atlas chart's
     # "manifest" total is narrower than country/tool/resource's), so the
     # linked time series always reflects whichever panel triggered it -
     # on a bare metric switch (no bar selected anywhere) that's panel 0.
-    total_lists = [{m[0]: m[5] for m in p[2]} for p in panels]
+    total_lists = [{m[0]: m[6] for m in p[2]} for p in panels]
 
     metric_change = CustomJS(
         args=dict(
@@ -134,7 +140,8 @@ def _wire_global(selector, panels, *, ts_source, ts_fig, caption):
             bar_sources=bar_sources,
             fig_xaxes=fig_xaxes,
             values_lists=values_lists,
-            units_lists=units_lists,
+            bar_units_lists=bar_units_lists,
+            daily_units_lists=daily_units_lists,
             total_lists=total_lists,
             metric_keys=metric_keys,
             metric_labels=metric_labels,
@@ -148,11 +155,11 @@ def _wire_global(selector, panels, *, ts_source, ts_fig, caption):
             bar_sources[j].data['value'] = values_lists[j][metric];
             bar_sources[j].change.emit();
             bar_sources[j].selected.indices = [];
-            fig_xaxes[j].axis_label = units_lists[j][metric];
+            fig_xaxes[j].axis_label = bar_units_lists[j][metric];
         }
         ts.data['y'] = total_lists[0][metric];
         ts.change.emit();
-        ts_yaxis.axis_label = units_lists[0][metric];
+        ts_yaxis.axis_label = daily_units_lists[0][metric];
         caption.text = 'Showing <b>all ' + metric_labels[metric] +
             '</b> &mdash; click a bar below to drill in';
         """,
@@ -162,9 +169,9 @@ def _wire_global(selector, panels, *, ts_source, ts_fig, caption):
     for fig, source, metrics, prefix in panels:
         panel_keys = [m[0] for m in metrics]
         panel_labels = {m[0]: m[1] for m in metrics}
-        units = {m[0]: m[2] for m in metrics}
-        lookup_by_metric = {m[0]: m[4] for m in metrics}
-        total_by_metric = {m[0]: m[5] for m in metrics}
+        daily_units = {m[0]: m[3] for m in metrics}
+        lookup_by_metric = {m[0]: m[5] for m in metrics}
+        total_by_metric = {m[0]: m[6] for m in metrics}
         tap_callback = CustomJS(
             args=dict(
                 bar_source=source,
@@ -173,7 +180,7 @@ def _wire_global(selector, panels, *, ts_source, ts_fig, caption):
                 selector=selector,
                 metric_keys=panel_keys,
                 metric_labels=panel_labels,
-                units=units,
+                units=daily_units,
                 lookup_by_metric=lookup_by_metric,
                 total_by_metric=total_by_metric,
                 prefix=prefix,
@@ -455,11 +462,10 @@ if has_data:
 # | label: explorer
 if has_data:
     metric_selector = RadioButtonGroup(
-        labels=["Requests", "Manifest opens"], active=0
+        labels=["Total requests", "Total manifest opens"], active=0
     )
-    view_selector = RadioButtonGroup(labels=["Combined", "By tool"], active=0)
     caption = Div(
-        text="Showing <b>all requests</b> &mdash; click a bar below to drill in",
+        text="Showing <b>all total requests</b> &mdash; click a bar below to drill in",
         styles={"color": INK, "font-size": "0.85rem"},
     )
 
@@ -476,76 +482,21 @@ if has_data:
         "x", "y", source=ts_source, color=GREEN, line_width=2, name="Total"
     )
 
-    # The per-tool lines share this figure, toggled by view_selector rather
-    # than being a separate chart - hidden (and their legend with them)
-    # until "By tool" is selected.
-    top_tool_cols = list(tool_daily.sum().sort_values(ascending=False).index[:6])
-    # Fixed hue order, checked with the design system's CVD-separation
-    # validator (adjacent pairs pass in this order); a plain grey read as
-    # colourless and failed, hence BROWN as the 6th hue instead of INK.
-    tool_palette = [GREEN, BLUE, ORANGE, PURPLE, PINK, BROWN]
-    tool_dates = list(tool_daily.index)
-    tool_line_sources = []
-    tool_renderers = []
-    for name, color in zip(top_tool_cols, tool_palette):
-        src = ColumnDataSource(data=dict(
-            x=tool_dates,
-            y=tool_daily[name].tolist(),
-            y_requests=tool_daily[name].tolist(),
-            y_manifest=tool_manifest_daily.get(str(name), [0] * len(tool_dates)),
-        ))
-        tool_line_sources.append(src)
-        tool_renderers.append(ts_fig.line(
-            "x", "y", source=src, color=color, line_width=2,
-            legend_label=str(name), name=str(name), visible=False,
-        ))
-
-    ts_fig.hover.tooltips = [("date", "@x{%F}"), ("tool", "$name"), ("value", "@y{0,0.[00]}")]
+    ts_fig.hover.tooltips = [("date", "@x{%F}"), ("value", "@y{0,0.[00]}")]
     ts_fig.hover.formatters = {"@x": "datetime"}
     ts_fig.hover.mode = "vline"
     ts_fig.yaxis.axis_label = "requests / day"
     ts_fig.y_range.start = 0
-    ts_fig.legend.click_policy = "hide"
-    ts_fig.legend.location = "top_left"
-    ts_fig.legend.background_fill_alpha = 0
-    ts_fig.legend.border_line_alpha = 0
-    ts_fig.legend.label_text_color = INK
-    ts_fig.legend.visible = False
     _style(ts_fig)
-
-    view_selector.js_on_change("active", CustomJS(
-        args=dict(
-            total_renderer=total_renderer,
-            tool_renderers=tool_renderers,
-            legend=ts_fig.legend[0],
-        ),
-        code="""
-        const byTool = cb_obj.active === 1;
-        total_renderer.visible = !byTool;
-        for (const r of tool_renderers) { r.visible = byTool; }
-        legend.visible = byTool;
-        """,
-    ))
-    metric_selector.js_on_change("active", CustomJS(
-        args=dict(sources=tool_line_sources),
-        code="""
-        const keys = ['y_requests', 'y_manifest'];
-        const key = keys[cb_obj.active];
-        for (const src of sources) {
-            src.data['y'] = src.data[key];
-            src.change.emit();
-        }
-        """,
-    ))
 
     top_atlas = (
         by_atlas[by_atlas.index != "unclassified"].head(15).sort_values("requests")
     )
     atlas_metrics = [
-        ("requests", "Requests", "requests / day",
-         top_atlas["requests"].tolist(), atlas_daily, total_daily),
-        ("manifest", "Manifest opens", "manifest opens / day",
-         top_atlas["manifest_opens"].tolist(), atlas_manifest_daily, total_manifest_daily),
+        ("requests", "Total requests", "total requests (millions)", "requests / day",
+         (top_atlas["requests"] / 1e6).tolist(), atlas_daily, total_daily),
+        ("manifest", "Total manifest opens", "total manifest opens (thousands)", "manifest opens / day",
+         (top_atlas["manifest_opens"] / 1e3).tolist(), atlas_manifest_daily, total_manifest_daily),
     ]
     atlas_fig, atlas_source = _bar_figure(
         [display_name(k) for k in top_atlas.index],
@@ -557,10 +508,10 @@ if has_data:
 
     top_country = by_country[by_country.index != "??"].head(15).sort_values()
     country_metrics = [
-        ("requests", "Requests", "requests / day",
-         top_country.tolist(), country_daily, total_daily),
-        ("manifest", "Manifest opens", "manifest opens / day",
-         by_country_manifest.reindex(top_country.index, fill_value=0).tolist(),
+        ("requests", "Total requests", "total requests (millions)", "requests / day",
+         (top_country / 1e6).tolist(), country_daily, total_daily),
+        ("manifest", "Total manifest opens", "total manifest opens (thousands)", "manifest opens / day",
+         (by_country_manifest.reindex(top_country.index, fill_value=0) / 1e3).tolist(),
          country_manifest_daily, total_manifest_all_daily),
     ]
     country_fig, country_source = _bar_figure(
@@ -571,10 +522,10 @@ if has_data:
 
     resource_sorted = by_resource.sort_values()
     resource_metrics = [
-        ("requests", "Requests", "requests / day",
-         resource_sorted.tolist(), resource_daily, total_daily),
-        ("manifest", "Manifest opens", "manifest opens / day",
-         by_resource_manifest.reindex(resource_sorted.index, fill_value=0).tolist(),
+        ("requests", "Total requests", "total requests (millions)", "requests / day",
+         (resource_sorted / 1e6).tolist(), resource_daily, total_daily),
+        ("manifest", "Total manifest opens", "total manifest opens (thousands)", "manifest opens / day",
+         (by_resource_manifest.reindex(resource_sorted.index, fill_value=0) / 1e3).tolist(),
          resource_manifest_daily, total_manifest_all_daily),
     ]
     resource_fig, resource_source = _bar_figure(
@@ -585,10 +536,10 @@ if has_data:
 
     tool_sorted = by_tool.sort_values()
     tool_metrics = [
-        ("requests", "Requests", "requests / day",
-         tool_sorted.tolist(), tool_daily_lookup, total_daily),
-        ("manifest", "Manifest opens", "manifest opens / day",
-         by_tool_manifest.reindex(tool_sorted.index, fill_value=0).tolist(),
+        ("requests", "Total requests", "total requests (millions)", "requests / day",
+         (tool_sorted / 1e6).tolist(), tool_daily_lookup, total_daily),
+        ("manifest", "Total manifest opens", "total manifest opens (thousands)", "manifest opens / day",
+         (by_tool_manifest.reindex(tool_sorted.index, fill_value=0) / 1e3).tolist(),
          tool_manifest_daily, total_manifest_all_daily),
     ]
     tool_fig, tool_source = _bar_figure(
@@ -626,8 +577,7 @@ if has_data:
         sizing_mode="stretch_width",
         toolbar_location=None,
     )
-    controls = row(metric_selector, view_selector, sizing_mode="stretch_width")
-    show(column(controls, caption, ts_fig, grid, sizing_mode="stretch_width"))
+    show(column(metric_selector, caption, ts_fig, grid, sizing_mode="stretch_width"))
 ```
 
 ```{python}
