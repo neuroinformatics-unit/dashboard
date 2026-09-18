@@ -20,7 +20,13 @@ import json
 import pandas as pd
 from bokeh.io import output_notebook, show
 from bokeh.layouts import column, gridplot
-from bokeh.models import ColumnDataSource, CustomJS, Div, RadioButtonGroup
+from bokeh.models import (
+    ColumnDataSource,
+    CustomJS,
+    Div,
+    NumeralTickFormatter,
+    RadioButtonGroup,
+)
 from bokeh.plotting import figure
 from bokeh.resources import INLINE
 
@@ -99,8 +105,12 @@ def _bar_figure(labels, keys, metrics, *, title, color):
         selection_fill_color=color,
         nonselection_fill_alpha=0.35,
     )
-    fig.hover.tooltips = [("", "@label"), ("value", "@value{0,0.[000]}")]
+    fig.hover.tooltips = [("", "@label"), ("value", "@value{0,0}")]
     fig.xaxis.axis_label = default_bar_unit
+    # Compact tick labels (500K, 1.1M, ...) computed from the raw value, so
+    # the axis stays readable without pre-scaling the data - the hover
+    # tooltip above still shows the exact number.
+    fig.xaxis.formatter = NumeralTickFormatter(format="0.[0]a")
     fig.x_range.start = 0
     _style(fig)
     return fig, source
@@ -486,6 +496,7 @@ if has_data:
     ts_fig.hover.formatters = {"@x": "datetime"}
     ts_fig.hover.mode = "vline"
     ts_fig.yaxis.axis_label = "requests / day"
+    ts_fig.yaxis.formatter = NumeralTickFormatter(format="0.[0]a")
     ts_fig.y_range.start = 0
     _style(ts_fig)
 
@@ -493,10 +504,10 @@ if has_data:
         by_atlas[by_atlas.index != "unclassified"].head(15).sort_values("requests")
     )
     atlas_metrics = [
-        ("requests", "Total requests", "total requests (millions)", "requests / day",
-         (top_atlas["requests"] / 1e6).tolist(), atlas_daily, total_daily),
-        ("manifest", "Total manifest opens", "total manifest opens (thousands)", "manifest opens / day",
-         (top_atlas["manifest_opens"] / 1e3).tolist(), atlas_manifest_daily, total_manifest_daily),
+        ("requests", "Total requests", "total requests", "requests / day",
+         top_atlas["requests"].tolist(), atlas_daily, total_daily),
+        ("manifest", "Total manifest opens", "total manifest opens", "manifest opens / day",
+         top_atlas["manifest_opens"].tolist(), atlas_manifest_daily, total_manifest_daily),
     ]
     atlas_fig, atlas_source = _bar_figure(
         [display_name(k) for k in top_atlas.index],
@@ -508,10 +519,10 @@ if has_data:
 
     top_country = by_country[by_country.index != "??"].head(15).sort_values()
     country_metrics = [
-        ("requests", "Total requests", "total requests (millions)", "requests / day",
-         (top_country / 1e6).tolist(), country_daily, total_daily),
-        ("manifest", "Total manifest opens", "total manifest opens (thousands)", "manifest opens / day",
-         (by_country_manifest.reindex(top_country.index, fill_value=0) / 1e3).tolist(),
+        ("requests", "Total requests", "total requests", "requests / day",
+         top_country.tolist(), country_daily, total_daily),
+        ("manifest", "Total manifest opens", "total manifest opens", "manifest opens / day",
+         by_country_manifest.reindex(top_country.index, fill_value=0).tolist(),
          country_manifest_daily, total_manifest_all_daily),
     ]
     country_fig, country_source = _bar_figure(
@@ -522,10 +533,10 @@ if has_data:
 
     resource_sorted = by_resource.sort_values()
     resource_metrics = [
-        ("requests", "Total requests", "total requests (millions)", "requests / day",
-         (resource_sorted / 1e6).tolist(), resource_daily, total_daily),
-        ("manifest", "Total manifest opens", "total manifest opens (thousands)", "manifest opens / day",
-         (by_resource_manifest.reindex(resource_sorted.index, fill_value=0) / 1e3).tolist(),
+        ("requests", "Total requests", "total requests", "requests / day",
+         resource_sorted.tolist(), resource_daily, total_daily),
+        ("manifest", "Total manifest opens", "total manifest opens", "manifest opens / day",
+         by_resource_manifest.reindex(resource_sorted.index, fill_value=0).tolist(),
          resource_manifest_daily, total_manifest_all_daily),
     ]
     resource_fig, resource_source = _bar_figure(
@@ -536,10 +547,10 @@ if has_data:
 
     tool_sorted = by_tool.sort_values()
     tool_metrics = [
-        ("requests", "Total requests", "total requests (millions)", "requests / day",
-         (tool_sorted / 1e6).tolist(), tool_daily_lookup, total_daily),
-        ("manifest", "Total manifest opens", "total manifest opens (thousands)", "manifest opens / day",
-         (by_tool_manifest.reindex(tool_sorted.index, fill_value=0) / 1e3).tolist(),
+        ("requests", "Total requests", "total requests", "requests / day",
+         tool_sorted.tolist(), tool_daily_lookup, total_daily),
+        ("manifest", "Total manifest opens", "total manifest opens", "manifest opens / day",
+         by_tool_manifest.reindex(tool_sorted.index, fill_value=0).tolist(),
          tool_manifest_daily, total_manifest_all_daily),
     ]
     tool_fig, tool_source = _bar_figure(
