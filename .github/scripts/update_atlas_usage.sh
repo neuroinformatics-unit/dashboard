@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Exit on any error, unset variable, or failed pipeline stage, rather than risk committing/pushing on bad data.
 set -euo pipefail
 
 python -m oss_dashboard.atlas_logs
