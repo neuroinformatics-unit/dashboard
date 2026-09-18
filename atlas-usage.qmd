@@ -133,36 +133,38 @@ def _wire_global(selector, panels, *, ts_source, ts_fig, caption):
     bars (largest at top) by the newly-selected metric, rather than leaving
     them in whichever metric was active at load.
     """
+    def _by_metric(index):
+        """{metric key -> that tuple field}, one dict per panel."""
+        return [{m[0]: m[index] for m in p[2]} for p in panels]
+
+    def _label_order(values, labels):
+        """Labels sorted by value, largest last (bottom-to-top bar order)."""
+        return [label for _, label in sorted(zip(values, labels))]
+
     metric_keys = [m[0] for m in panels[0][2]]
     metric_labels = {m[0]: m[1] for m in panels[0][2]}
     bar_sources = [p[1] for p in panels]
     fig_xaxes = [p[0].xaxis[0] for p in panels]
     fig_yranges = [p[0].y_range for p in panels]
-    values_lists = [{m[0]: m[4] for m in p[2]} for p in panels]
+    values_lists = _by_metric(4)
     # Every metric's bar_values is aligned to the same (label, key) order
     # the panel's source started with, so re-zip against that fixed order
     # to get each metric's own largest-at-top label ordering.
     order_lists = [
-        {
-            m[0]: [
-                label
-                for _, label in sorted(zip(m[4], list(p[1].data["label"])))
-            ]
-            for m in p[2]
-        }
+        {m[0]: _label_order(m[4], list(p[1].data["label"])) for m in p[2]}
         for p in panels
     ]
-    bar_units_lists = [{m[0]: m[2] for m in p[2]} for p in panels]
+    bar_units_lists = _by_metric(2)
     # The time series always shows a daily rate, whether it's the linked
     # panel's own total-per-day or (after a tap) one entity's daily trend -
     # unlike the bars, which show a total over the whole window - so it
     # always takes its axis label from daily_unit, never bar_unit.
-    daily_units_lists = [{m[0]: m[3] for m in p[2]} for p in panels]
+    daily_units_lists = _by_metric(3)
     # The reset/total series can differ per panel (e.g. the atlas chart's
     # "manifest" total is narrower than country/tool/resource's), so the
     # linked time series always reflects whichever panel triggered it -
     # on a bare metric switch (no bar selected anywhere) that's panel 0.
-    total_lists = [{m[0]: m[6] for m in p[2]} for p in panels]
+    total_lists = _by_metric(6)
 
     metric_change = CustomJS(
         args=dict(
@@ -595,6 +597,7 @@ if has_data:
     # panel instead of showing a near-empty, confusing chart - the "row"
     # (not "gridplot") layout below lets it collapse and its neighbour
     # reflow to fill the space, rather than leaving a blank gap.
+    # active index 1 is "Total manifest requests" (see metric_selector above).
     metric_selector.js_on_change("active", CustomJS(
         args=dict(fig=resource_fig),
         code="fig.visible = cb_obj.active !== 1;",

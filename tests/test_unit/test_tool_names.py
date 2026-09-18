@@ -45,7 +45,7 @@ def test_all_classify_client_outcomes_are_handled():
 
     referer_tools = {tool for _, tool in _REFERER_TOOLS}
     user_agents = [
-        ("brainrender", "brainrender/1.0"),
+        ("-", "brainrender-track-export/1.0"),
         ("-", "aiobotocore/3.9.0"),
         ("-", "pooch/1.8.0"),
         ("-", "aws-cli/2.0"),
