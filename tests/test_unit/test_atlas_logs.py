@@ -164,12 +164,37 @@ def test_event_date():
             ("allen_mouse", "annotation"),
         ),
         (
+            # Precomputed-mesh files (Neuroglancer format) live inside the
+            # annotation set's own folder, not the OME-Zarr volume - a
+            # distinct "mesh" resource, not "annotation".
+            "atlas/annotation-sets/allen_mouse-annotation/3_0/"
+            "annotations.precomputed/mesh/111220530",
+            ("allen_mouse", "mesh"),
+        ),
+        (
+            "atlas/annotation-sets/allen_mouse-annotation/3_0/"
+            "annotations_smooth.precomputed/mesh/111220530.index",
+            ("allen_mouse", "mesh"),
+        ),
+        (
+            "atlas/coordinate-spaces/admba-e11_5-mouse-space/1/x",
+            ("admba_e11_5_mouse", "coordinate-space"),
+        ),
+        (
+            # Real current shape: a folder with a version and manifest.json,
+            # not a flat archive.
+            "atlas/atlases/allen_mouse_25um/3_0/manifest.json",
+            ("allen_mouse", "atlas-manifest"),
+        ),
+        (
+            # Older, pre-migration shape - still needs to parse correctly
+            # for a --full-rebuild over historical logs.
             "atlas/atlases/allen_mouse_25um.tar.gz",
-            ("allen_mouse", "packaged-atlas"),
+            ("allen_mouse", "atlas-manifest"),
         ),
         (
             "atlas/atlases/admba_3d_p14_mouse_16.752um.tar.gz",
-            ("admba_3d_p14_mouse", "packaged-atlas"),
+            ("admba_3d_p14_mouse", "atlas-manifest"),
         ),
         (
             "atlas/atlases/last_versions.conf",

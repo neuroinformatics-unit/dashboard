@@ -87,11 +87,12 @@ cross-tabs) so no dimension inflates another: `atlas_usage.parquet`
 cursor in `atlas_usage_state.json`. All files live in `oss_dashboard/data/`
 and are committed to the repo; CI updates them daily.
 
-Each atlas is served as several resources (an annotation volume, one or more
-reference/template images, a terminology, a packaged download, a
-neuroglancer state file) under separate S3 key namespaces - only the
-annotation keys carry the canonical atlas name, so the atlas breakdown is
-built from those (`oss_dashboard/atlas_logs/parser.py::classify_key`).
+Each atlas is served as several resources (an annotation volume, per-region
+meshes, one or more reference/template images, a terminology, a coordinate
+space, the atlas's own manifest, a neuroglancer state file) under separate
+S3 key namespaces - only the annotation keys carry the canonical atlas name,
+so the atlas breakdown is built from those
+(`oss_dashboard/atlas_logs/parser.py::classify_key`).
 
 Atlases are stored as OME-Zarr; each store's group-root `zarr.json` is
 fetched once per "open", separately from the (many, size-dependent) chunk

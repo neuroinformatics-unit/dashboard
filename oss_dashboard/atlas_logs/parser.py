@@ -60,17 +60,23 @@ _MONTHS = {
 }
 
 # Suffixes attached to the third key segment for each atlas resource kind.
+# "-reference" has never actually been seen (in the live bucket or the
+# committed usage history) but is kept in case an older log line uses it -
+# harmless either way, since an unmatched suffix just falls through below.
 _RESOURCE_SUFFIXES = {
     "-annotation": "annotation",
     "-template": "template",
     "-terminology": "terminology",
     "-reference": "reference",
-    "-meshes": "meshes",
+    "-space": "coordinate-space",
 }
 
-# Trailing resolution token on packaged-atlas names, e.g. "allen_mouse_25um"
+# Trailing resolution token on atlas-manifest names, e.g. "allen_mouse_25um"
 # or "admba_3d_p14_mouse_16.752um" -> strip so versions of one atlas collapse.
 _RESOLUTION_RE = re.compile(r"_\d+(?:\.\d+)?um$")
+# Only ever seen on the older, now-migrated-away-from flat ".tar.gz"-style
+# atlas archives - kept for correctly parsing that era's log lines on a
+# --full-rebuild, even though the live bucket no longer serves them.
 _ARCHIVE_EXTENSIONS = (".tar.gz", ".tar", ".tgz", ".zip", ".conf", ".json")
 
 # Non-atlas objects that live under atlas/atlases/.
@@ -202,19 +208,36 @@ def _is_zarr_group_manifest(parts: list[str]) -> bool:
     )
 
 
+def _is_mesh_path(parts: list[str]) -> bool:
+    """True for a file under an annotation set's Neuroglancer precomputed-
+    mesh directory (``annotations.precomputed`` or
+    ``annotations_smooth.precomputed``), not its OME-Zarr volume.
+
+    Meshes live *inside* the annotation set's own folder rather than a
+    separate collection, so this - not a ``_RESOURCE_SUFFIXES`` entry - is
+    what tells a mesh chunk/index file apart from the annotation volume
+    itself.
+    """
+    return len(parts) >= 5 and "precomputed" in parts[4]
+
+
 def classify_key(key: str) -> tuple[str, str]:
     """Map an S3 object key to ``(atlas, resource)``.
 
     The ``atlas`` is the BrainGlobe atlas name; ``resource`` is what kind of
-    object it is (``annotation``, ``template``, ``reference``, ``terminology``,
-    ``packaged-atlas``, ``ng-state``, ...). One atlas has several resources,
-    each under its own key namespace - only ``annotation`` names use the
-    canonical atlas identifier, so the dashboard counts atlases from those.
+    object it is (``annotation``, ``mesh``, ``template``, ``reference``,
+    ``terminology``, ``coordinate-space``, ``atlas-manifest``, ``ng-state``,
+    ...). One atlas has several resources, each under its own key namespace
+    - only ``annotation`` names use the canonical atlas identifier, so the
+    dashboard counts atlases from those.
 
     Within a Zarr-backed resource, the group-root ``zarr.json`` fetch is
     further split out as ``"<resource>-manifest"`` (see
     ``_is_zarr_group_manifest``) - one such fetch per store "open" makes it
     a better popularity proxy than raw (chunk-count-skewed) request totals.
+    Per-region meshes are a separate resource in their own right (see
+    ``_is_mesh_path``), even though they live inside the annotation set's
+    own folder rather than a separate collection.
 
     Examples (key -> result)::
 
@@ -222,10 +245,16 @@ def classify_key(key: str) -> tuple[str, str]:
             -> ("allen_mouse", "annotation")
         atlas/annotation-sets/allen_mouse-annotation/3_0/annotations.ome.zarr/zarr.json
             -> ("allen_mouse", "annotation-manifest")
+        atlas/annotation-sets/allen_mouse-annotation/3_0/annotations.precomputed/mesh/123
+            -> ("allen_mouse", "mesh")
         atlas/templates/allen-adult-mouse-stpt-template/3_0/t
             -> ("allen_adult_mouse_stpt", "template")
+        atlas/coordinate-spaces/allen-adult-mouse-ccf-space/1/x
+            -> ("allen_adult_mouse_ccf", "coordinate-space")
+        atlas/atlases/allen_mouse_25um/3_0/manifest.json
+            -> ("allen_mouse", "atlas-manifest")
         atlas/atlases/allen_mouse_25um.tar.gz
-            -> ("allen_mouse", "packaged-atlas")
+            -> ("allen_mouse", "atlas-manifest")  # older, pre-migration shape
         ng_state_files/allen_mouse.json
             -> ("allen_mouse", "ng-state")
 
@@ -249,12 +278,14 @@ def classify_key(key: str) -> tuple[str, str]:
             stem = _RESOLUTION_RE.sub("", stem)
             if not stem or stem in _ATLASES_NON_ATLAS:
                 return "unclassified", "other"
-            return stem, "packaged-atlas"
+            return stem, "atlas-manifest"
 
         for suffix, resource in _RESOURCE_SUFFIXES.items():
             if name.endswith(suffix):
                 atlas = name[: -len(suffix)].replace("-", "_")
-                if _is_zarr_group_manifest(parts):
+                if suffix == "-annotation" and _is_mesh_path(parts):
+                    resource = "mesh"
+                elif _is_zarr_group_manifest(parts):
                     resource = f"{resource}-manifest"
                 return atlas, resource
 
