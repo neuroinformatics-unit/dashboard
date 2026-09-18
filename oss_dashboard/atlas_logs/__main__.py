@@ -9,7 +9,7 @@ from pathlib import Path
 import yaml
 from dotenv import load_dotenv
 
-from oss_dashboard.atlas_logs.constants import S3_MAX_WORKERS
+from oss_dashboard.atlas_logs.constants import DEFAULT_REGION, S3_MAX_WORKERS
 from oss_dashboard.atlas_logs.pipeline import run
 
 
@@ -67,7 +67,7 @@ def main() -> None:
 
     atlas_config = _load_atlas_config()
     bucket = atlas_config.get("bucket", "")
-    region = atlas_config.get("region", "us-west-2")
+    region = atlas_config.get("region", DEFAULT_REGION)
     prefix = atlas_config.get("prefix", "") or ""
 
     if args.local_dir is None and not bucket:

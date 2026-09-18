@@ -29,6 +29,9 @@ TOOL_MEASURES = [*SUMMARY_MEASURES, "manifest_requests"]
 DOWNLOAD_OPERATIONS = frozenset({"REST.GET.OBJECT"})
 OK_STATUSES = frozenset({200, 206})
 
+# Used as the config.yml fallback if atlasLogs.region is ever omitted.
+DEFAULT_REGION = "us-west-2"
+
 # Access logs arrive as a very large number of small objects, so fetching
 # them is latency- rather than bandwidth-bound: one GET at a time runs at
 # roughly 4 objects/s. Fetch them through a thread pool instead.
