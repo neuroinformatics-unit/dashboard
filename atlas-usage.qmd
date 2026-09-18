@@ -19,7 +19,7 @@ import json
 
 import pandas as pd
 from bokeh.io import output_notebook, show
-from bokeh.layouts import column, gridplot
+from bokeh.layouts import column, row
 from bokeh.models import (
     ColumnDataSource,
     CustomJS,
@@ -126,13 +126,29 @@ def _wire_global(selector, panels, *, ts_source, ts_fig, caption):
     a bar shows that entity's own daily trend, in whichever metric is
     currently toggled, in the shared time series; clicking the same bar
     again, or switching metric, resets every panel back to its overall
-    total for that metric.
+    total for that metric. Switching metric also re-sorts each panel's own
+    bars (largest at top) by the newly-selected metric, rather than leaving
+    them in whichever metric was active at load.
     """
     metric_keys = [m[0] for m in panels[0][2]]
     metric_labels = {m[0]: m[1] for m in panels[0][2]}
     bar_sources = [p[1] for p in panels]
     fig_xaxes = [p[0].xaxis[0] for p in panels]
+    fig_yranges = [p[0].y_range for p in panels]
     values_lists = [{m[0]: m[4] for m in p[2]} for p in panels]
+    # Every metric's bar_values is aligned to the same (label, key) order
+    # the panel's source started with, so re-zip against that fixed order
+    # to get each metric's own largest-at-top label ordering.
+    order_lists = [
+        {
+            m[0]: [
+                label
+                for _, label in sorted(zip(m[4], list(p[1].data["label"])))
+            ]
+            for m in p[2]
+        }
+        for p in panels
+    ]
     bar_units_lists = [{m[0]: m[2] for m in p[2]} for p in panels]
     # The time series always shows a daily rate, whether it's the linked
     # panel's own total-per-day or (after a tap) one entity's daily trend -
@@ -150,7 +166,9 @@ def _wire_global(selector, panels, *, ts_source, ts_fig, caption):
             selector=selector,
             bar_sources=bar_sources,
             fig_xaxes=fig_xaxes,
+            fig_yranges=fig_yranges,
             values_lists=values_lists,
+            order_lists=order_lists,
             bar_units_lists=bar_units_lists,
             daily_units_lists=daily_units_lists,
             total_lists=total_lists,
@@ -167,6 +185,7 @@ def _wire_global(selector, panels, *, ts_source, ts_fig, caption):
             bar_sources[j].change.emit();
             bar_sources[j].selected.indices = [];
             fig_xaxes[j].axis_label = bar_units_lists[j][metric];
+            fig_yranges[j].factors = order_lists[j][metric];
         }
         ts.data['y'] = total_lists[0][metric];
         ts.change.emit();
@@ -565,6 +584,18 @@ if has_data:
         ts_source=ts_source, ts_fig=ts_fig, caption=caption,
     )
 
+    # "Manifest opens by resource type" is mostly zero with a few echoes
+    # (see the resource_manifest_daily comment above): every non-"-manifest"
+    # row is zero and every "-manifest" row just repeats its own request
+    # count, so it adds no information under that metric. Hide the whole
+    # panel instead of showing a near-empty, confusing chart - the "row"
+    # (not "gridplot") layout below lets it collapse and its neighbour
+    # reflow to fill the space, rather than leaving a blank gap.
+    metric_selector.js_on_change("active", CustomJS(
+        args=dict(fig=resource_fig),
+        code="fig.visible = cb_obj.active !== 1;",
+    ))
+
     # The atlas chart still renders all 15 bars (so the metric toggle and
     # tap-to-drilldown above keep working on the full list) - it's just
     # clipped to roughly its top 10 by height, with a scrollbar for the rest.
@@ -575,13 +606,10 @@ if has_data:
         styles={"overflow-y": "auto", "border": f"1px solid {GRID}", "border-radius": "4px"},
     )
 
-    grid = gridplot(
-        [
-            [atlas_panel, country_fig],
-            [resource_fig, tool_fig],
-        ],
+    grid = column(
+        row(atlas_panel, country_fig, sizing_mode="stretch_width"),
+        row(resource_fig, tool_fig, sizing_mode="stretch_width"),
         sizing_mode="stretch_width",
-        toolbar_location=None,
     )
     show(column(metric_selector, caption, ts_fig, grid, sizing_mode="stretch_width"))
 ```
