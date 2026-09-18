@@ -37,6 +37,7 @@ from oss_dashboard.atlas_logs.constants import (
     STATE_PATH,
     TOOL_PARQUET_PATH,
 )
+from oss_dashboard.atlas_logs.tool_names import display_tool
 
 # Embeds BokehJS directly into the page rather than pointing at a CDN, so
 # the charts also work fully offline.
@@ -242,13 +243,7 @@ tools = _read(
     TOOL_PARQUET_PATH,
     ["date", "tool", "requests", "bytes_sent", "manifest_requests"],
 )
-# These four classify_client() outcomes (see atlas_logs/parser.py) are all
-# "not a recognised client", just via different fallback paths - lump them
-# together rather than showing four near-empty catch-all rows.
-tools["tool"] = tools["tool"].replace(
-    {name: "other/unknown" for name in
-     ("other", "other web viewer", "bot / crawler", "unknown")}
-)
+tools["tool"] = tools["tool"].map(display_tool)
 has_data = not usage.empty
 
 state = json.loads(STATE_PATH.read_text()) if STATE_PATH.exists() else {}
