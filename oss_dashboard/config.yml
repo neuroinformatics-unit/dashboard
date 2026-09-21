@@ -8,3 +8,13 @@ since: '2018-01-02'
 # GitHub Pages path to the repository
 # Used for handling relative paths for assets
 basePath: '/dashboard'
+
+# S3 server access log analytics for the public BrainGlobe atlas bucket.
+# The fetcher (`python -m oss_dashboard.atlas_logs`) reads new access-log
+# objects from `bucket` and appends per-day/atlas/country totals to
+# oss_dashboard/data/atlas_usage.parquet. AWS credentials are read from the
+# standard environment variables (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY).
+atlasLogs:
+  bucket: 'brainglobe-logs'
+  region: 'us-west-2'
+  prefix: ''
