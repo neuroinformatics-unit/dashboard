@@ -1,15 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>https://dashboard.neuroinformatics.dev/atlas-usage.html</loc>
-    <lastmod>2026-09-21T06:39:28.176Z</lastmod>
+    <loc>https://dashboard.neuroinformatics.dev/about.html</loc>
+    <lastmod>2026-09-21T06:53:21.303Z</lastmod>
   </url>
   <url>
     <loc>https://dashboard.neuroinformatics.dev/index.html</loc>
-    <lastmod>2026-09-21T06:39:28.177Z</lastmod>
-  </url>
-  <url>
-    <loc>https://dashboard.neuroinformatics.dev/about.html</loc>
-    <lastmod>2026-09-21T06:39:28.176Z</lastmod>
+    <lastmod>2026-09-21T06:53:21.303Z</lastmod>
   </url>
 </urlset>
