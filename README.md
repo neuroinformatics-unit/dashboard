@@ -36,13 +36,13 @@ PEPY_API_KEY=your_pepy_api_key
 
 The `GRAPHQL_TOKEN` requires the following GitHub scopes:
 - `read:org`
-- `read:repo`
+- `repo`
 - `read:project`
 
 > [!NOTE]
 > To fetch contributor counts, the token must belong to an organization admin.
 
-Get a PEPY API key from [pepy.tech](https://www.pepy.tech/pepy-api) for PyPI download statistics.
+Get a PEPY API key from [pepy.tech](https://pepy.tech/pepy-api) for PyPI download statistics.
 
 ## Installation
 
