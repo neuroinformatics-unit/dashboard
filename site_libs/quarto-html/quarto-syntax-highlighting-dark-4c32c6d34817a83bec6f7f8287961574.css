@@ -34,7 +34,7 @@
 
 /* other quarto variables */
 :root {
-  --quarto-font-monospace: JetBrains Mono;
+  --quarto-font-monospace: "JetBrains Mono";
 }
 
 /* syntax highlight based on Pandoc's rules */
@@ -216,4 +216,4 @@ code span.wa {
   content: "</";
 }
 
-/*# sourceMappingURL=7c7f3d2f1d9081297c8e583421f3e273.css.map */
+/*# sourceMappingURL=ca76492212eea3f6d1ae9547467db990.css.map */
