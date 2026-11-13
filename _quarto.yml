@@ -2,7 +2,7 @@ project:
   type: website
   output-dir: build
 
-execute: 
+execute:
   enabled: true
 
 website:
@@ -16,6 +16,8 @@ website:
     left:
       - href: index.qmd
         text: Dashboard
+      - href: atlas-usage.qmd
+        text: Atlas usage
       - href: about.qmd
         text: About
 
