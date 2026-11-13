@@ -4,7 +4,8 @@ set -euo pipefail
 
 python -m oss_dashboard.atlas_logs
 
-# Pull requests only render with existing data - never push from a PR run.
+# Pull requests fetch and render the latest logs for the preview, but never
+# commit/push them.
 if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
   exit 0
 fi

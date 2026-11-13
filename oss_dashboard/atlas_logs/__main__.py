@@ -32,8 +32,8 @@ def main() -> None:
         "--local-dir",
         type=Path,
         help="Parse log files from this directory, or a Parquet mirror "
-        "made by scripts/sync_logs.py, instead of S3 (for backfills). The "
-        "fetch cursor is still honoured and updated.",
+        "made by brainglobe-scripts' sync_logs.py, instead of S3 (for "
+        "backfills). The fetch cursor is still honoured and updated.",
     )
     parser.add_argument(
         "--full-rebuild",
@@ -91,7 +91,7 @@ def main() -> None:
         f"\nProcessed {result['objects']:,} log objects "
         f"({result['lines_parsed']:,} lines, "
         f"{result['lines_skipped']:,} unparsable).\n"
-        f"{result['downloads']:,} downloads, "
+        f"{result['downloads']:,} requests, "
         f"{result['bytes_sent'] / 1e12:.3f} TB served.\n"
         f"Summaries: {result['atlas_rows']:,} atlas rows, "
         f"{result['country_rows']:,} country rows, "

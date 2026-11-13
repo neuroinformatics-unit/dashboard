@@ -1,7 +1,6 @@
 """Unit tests for the ``oss_dashboard.atlas_logs`` pipeline."""
 
 import ipaddress
-from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -432,7 +431,7 @@ def test_run_over_local_dir(tmp_path):
     ]
     assert country["requests"].sum() == 4  # every download, once
     assert set(country["country"]) == {"US"}
-    assert country["manifest_requests"].sum() == 0  # none of these are zarr.json
+    assert country["manifest_requests"].sum() == 0  # no atlas manifests
 
     tool = load_summary(tool_path, TOOL_KEY, TOOL_MEASURES)
     assert list(tool.columns) == [
@@ -504,7 +503,9 @@ def test_load_summary_missing_file_is_empty(tmp_path):
     ]
     assert isinstance(atlas, pd.DataFrame)
 
-    country = load_summary(tmp_path / "nope2.parquet", COUNTRY_KEY, COUNTRY_MEASURES)
+    country = load_summary(
+        tmp_path / "nope2.parquet", COUNTRY_KEY, COUNTRY_MEASURES
+    )
     assert list(country.columns) == [
         "date",
         "country",
@@ -516,12 +517,9 @@ def test_load_summary_missing_file_is_empty(tmp_path):
 
 def test_run_over_parquet_mirror_matches_local_dir(tmp_path):
     import gzip
-    import importlib.util
 
-    script = Path(__file__).parents[2] / "scripts" / "sync_logs.py"
-    spec = importlib.util.spec_from_file_location("sync_logs", script)
-    sync_logs = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(sync_logs)
+    import pyarrow as pa
+    import pyarrow.parquet as pq
 
     line = _line(key="atlas/atlases/allen_mouse_25um/3_0/manifest.json")
     files = {
@@ -534,7 +532,14 @@ def test_run_over_parquet_mirror_matches_local_dir(tmp_path):
     for name, body in files.items():
         (flat / name).write_bytes(body)
     mirror = tmp_path / "mirror"
-    sync_logs.write(mirror, sorted(files.items()), batch=2)  # one file per day
+    mirror.mkdir()
+    # Same layout as brainglobe-scripts' sync_logs.py: one file per day.
+    for day in {k[:10] for k in files}:
+        keys = sorted(k for k in files if k.startswith(day))
+        pq.write_table(
+            pa.table({"key": keys, "body": [files[k] for k in keys]}),
+            mirror / f"{day}.parquet",
+        )
 
     def summary(source, name):
         run(

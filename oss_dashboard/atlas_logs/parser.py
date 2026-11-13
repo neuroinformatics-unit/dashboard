@@ -228,8 +228,8 @@ def classify_key(key: str) -> tuple[str, str]:
     object it is (``annotation``, ``mesh``, ``template``, ``reference``,
     ``terminology``, ``coordinate-space``, ``atlas-manifest``, ``ng-state``,
     ...). One atlas has several resources, each under its own key namespace
-    - only ``annotation`` names use the canonical atlas identifier, so the
-    dashboard counts atlases from those.
+    - the dashboard counts atlas downloads from ``atlas-manifest`` keys,
+    whose names are the canonical brainglobe-atlasapi atlas identifiers.
 
     Within a Zarr-backed resource, the group-root ``zarr.json`` fetch is
     further split out as ``"<resource>-manifest"`` (see

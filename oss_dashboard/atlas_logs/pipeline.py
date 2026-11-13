@@ -84,7 +84,7 @@ def iter_parquet_objects(
 
     ``directory`` holds ``(key, body)`` Parquet files, each in key order and
     named so they sort in key order - one per day, as written by
-    ``scripts/sync_logs.py``.
+    ``sync_logs.py`` in the brainglobe-scripts repository.
     """
     import pyarrow.parquet as pq
 
@@ -260,7 +260,9 @@ def run(
         missing if full_rebuild else atlas_path, ATLAS_KEY
     )
     country_existing = load_summary(
-        missing if full_rebuild else country_path, COUNTRY_KEY, COUNTRY_MEASURES
+        missing if full_rebuild else country_path,
+        COUNTRY_KEY,
+        COUNTRY_MEASURES,
     )
     tool_existing = load_summary(
         missing if full_rebuild else tool_path, TOOL_KEY, TOOL_MEASURES

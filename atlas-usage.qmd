@@ -606,10 +606,9 @@ if has_data:
         cum_source=cum_source,
     )
 
-    # "Atlas downloads by resource type" is mostly zero with a few echoes
-    # (see the resource_manifest_daily comment above): every non-"-manifest"
-    # row is zero and every "-manifest" row just repeats its own request
-    # count, so it adds no information under that metric. Hide the whole
+    # "Atlas downloads by resource type" is all zero except the
+    # "atlas-manifest" row (see the resource_manifest_daily comment above),
+    # so it adds no information under that metric. Hide the whole
     # panel instead of showing a near-empty, confusing chart - the "row"
     # (not "gridplot") layout below lets it collapse and its neighbour
     # reflow to fill the space, rather than leaving a blank gap.
