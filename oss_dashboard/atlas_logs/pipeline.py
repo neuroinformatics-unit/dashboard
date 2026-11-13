@@ -77,6 +77,36 @@ def iter_local_objects(
             return
 
 
+def iter_parquet_objects(
+    directory: Path, start_after: str, limit: int | None
+) -> ObjectSource:
+    """Yield ``(key, text)`` past the cursor from a Parquet log mirror.
+
+    ``directory`` holds ``(key, body)`` Parquet files, each in key order and
+    named so they sort in key order - one per day, as written by
+    ``scripts/sync_logs.py``.
+    """
+    import pyarrow.parquet as pq
+
+    parts = sorted(directory.glob("*.parquet"))
+    count = 0
+    for i, path in enumerate(parts):
+        # The next file's name sorts after every key in this one.
+        if i + 1 < len(parts) and parts[i + 1].stem <= start_after:
+            continue
+        for batch in pq.ParquetFile(path).iter_batches(
+            batch_size=10_000, columns=["key", "body"]
+        ):
+            keys, bodies = batch.to_pydict().values()
+            for key, body in zip(keys, bodies):
+                if key <= start_after:
+                    continue
+                yield key, _decode(body)
+                count += 1
+                if limit is not None and count >= limit:
+                    return
+
+
 def iter_s3_objects(
     bucket: str,
     region: str,
@@ -102,7 +132,8 @@ def iter_s3_objects(
         "s3",
         region_name=region,
         config=BotoConfig(
-            max_pool_connections=max_workers,
+            # +1: the main thread lists key pages while every worker GETs.
+            max_pool_connections=max_workers + 1,
             retries={"max_attempts": 5, "mode": "standard"},
         ),
     )
@@ -177,7 +208,11 @@ def accumulate(
             continue
 
         atlas, resource = classify_key(record.key)
-        is_manifest = 1 if resource.endswith("-manifest") else 0
+        # Atlas installs only: the atlas manifest.json, minus the internal
+        # test atlas, so it matches the dashboard's atlas downloads.
+        is_manifest = int(
+            resource == "atlas-manifest" and atlas != "example_mouse"
+        )
         country = country_lookup.lookup(record.remote_ip)
         tool = classify_client(record.referer, record.user_agent)
 
@@ -235,7 +270,11 @@ def run(
         country_lookup = load_country_lookup()
 
     source: ObjectSource
-    if local_dir is not None:
+    if local_dir is not None and any(Path(local_dir).glob("*.parquet")):
+        source = iter_parquet_objects(
+            Path(local_dir), start_after, max_objects
+        )
+    elif local_dir is not None:
         source = iter_local_objects(Path(local_dir), start_after, max_objects)
     else:
         source = iter_s3_objects(

@@ -87,3 +87,7 @@ venv/
 
 /.quarto/
 **/*.quarto_ipynb
+
+# Local mirrors of raw access logs (scripts/sync_logs.py) - never commit
+*.db
+/brainglobe-logs/

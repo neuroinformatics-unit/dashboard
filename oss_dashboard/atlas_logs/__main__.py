@@ -31,8 +31,9 @@ def main() -> None:
     parser.add_argument(
         "--local-dir",
         type=Path,
-        help="Parse log files from this directory instead of S3 "
-        "(for backfills). The fetch cursor is still honoured and updated.",
+        help="Parse log files from this directory, or a Parquet mirror "
+        "made by scripts/sync_logs.py, instead of S3 (for backfills). The "
+        "fetch cursor is still honoured and updated.",
     )
     parser.add_argument(
         "--full-rebuild",

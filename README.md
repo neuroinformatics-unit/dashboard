@@ -90,19 +90,28 @@ and are committed to the repo; CI updates them daily.
 Each atlas is served as several resources (an annotation volume, per-region
 meshes, one or more reference/template images, a terminology, a coordinate
 space, the atlas's own manifest, a neuroglancer state file) under separate
-S3 key namespaces - only the annotation keys carry the canonical atlas name,
-so the atlas breakdown is built from those
-(`oss_dashboard/atlas_logs/parser.py::classify_key`).
+S3 key namespaces. The atlas breakdown on the dashboard is built from the
+`atlas-manifest` rows (`atlas/atlases/<name>_<res>um/<ver>/manifest.json`,
+`oss_dashboard/atlas_logs/parser.py::classify_key`): brainglobe-atlasapi
+always fetches that manifest first, once per local install, and its folder
+name is the canonical atlas key (resolution stripped). Other resources'
+folder names don't always match it (e.g. `demba-p21-mouse` vs
+`demba_allen_seg_dev_mouse_p21`), and not every atlas use reads them.
+
+`example_mouse` is an internal test atlas and is left out of the atlas
+breakdown (the country and tool summaries have no atlas dimension, so they
+still include it).
 
 Atlases are stored as OME-Zarr; each store's group-root `zarr.json` is
 fetched once per "open", separately from the (many, size-dependent) chunk
 files a client then reads. `classify_key` tags that specific fetch as a
 `"<resource>-manifest"` row (`_is_zarr_group_manifest`), giving a request
-count that isn't skewed by array size or how much of it was actually read -
-used as the atlas popularity proxy on the dashboard. Country and tool have
-no resource dimension to carry that same split as separate rows, so they
-instead get it as an additional `manifest_requests` measure column,
-resource-agnostic across every atlas.
+count that isn't skewed by array size or how much of it was actually read.
+Country and tool have no resource dimension to carry that split as separate
+rows, so they instead get an additional `manifest_requests` measure column:
+atlas downloads only - every atlas `manifest.json` fetch (a proxy for atlas
+installs), excluding `example_mouse`, so it sums to the same total as the
+atlas breakdown. zarr group-root fetches are not included.
 
 The tool is inferred from each request's `Referer` and `User-Agent`
 (`classify_client`): the browser viewers (neuroglancer, Pinpoint) set a

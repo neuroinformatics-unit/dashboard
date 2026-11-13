@@ -1,6 +1,7 @@
 """Unit tests for the ``oss_dashboard.atlas_logs`` pipeline."""
 
 import ipaddress
+from pathlib import Path
 
 import pandas as pd
 import pytest
@@ -19,7 +20,11 @@ from oss_dashboard.atlas_logs.parser import (
     event_date,
     parse_line,
 )
-from oss_dashboard.atlas_logs.pipeline import accumulate, run
+from oss_dashboard.atlas_logs.pipeline import (
+    accumulate,
+    iter_parquet_objects,
+    run,
+)
 from oss_dashboard.atlas_logs.store import (
     counts_to_frame,
     load_state,
@@ -292,8 +297,8 @@ def test_accumulate_counts_only_successful_downloads():
             _line(
                 # The group-root manifest fetch for the same store/tool/
                 # country - counted separately in atlas_counts (its own
-                # "annotation-manifest" resource row) and additionally
-                # tallied in country/tool's manifest_requests measure.
+                # "annotation-manifest" resource row); not an atlas
+                # download, so not in country/tool's manifest_requests.
                 key="atlas/annotation-sets/allen_mouse-annotation/3_0/"
                 "annotations.ome.zarr/zarr.json",
                 bytes_="20",
@@ -304,6 +309,18 @@ def test_accumulate_counts_only_successful_downloads():
                 bytes_="50",
                 referer="https://pinpoint.allenneuraldynamics.org/",
                 user_agent="Mozilla/5.0",
+            ),
+            _line(
+                # An atlas download: counted in manifest_requests.
+                key="atlas/atlases/allen_mouse_25um/3_0/manifest.json",
+                bytes_="5",
+                user_agent="aiobotocore/3.9.0 lang/python#3.12",
+            ),
+            _line(
+                # Test atlas: its own row, but not an atlas download.
+                key="atlas/atlases/example_mouse_100um/1_2/manifest.json",
+                bytes_="5",
+                user_agent="aiobotocore/3.9.0 lang/python#3.12",
             ),
             _line(operation="REST.PUT.OBJECT", key="atlas/x"),  # not a GET
             _line(status="404", key="atlas/x"),  # failed
@@ -317,17 +334,19 @@ def test_accumulate_counts_only_successful_downloads():
         text, atlas_counts, country_counts, tool_counts, lookup
     )
 
-    assert parsed == 5
+    assert parsed == 7
     assert skipped == 1
     # the three breakdowns are independent, not crossed
     assert atlas_counts == {
         ("2026-08-12", "allen_mouse", "annotation"): [2, 150],
         ("2026-08-12", "allen_mouse", "annotation-manifest"): [1, 20],
+        ("2026-08-12", "allen_mouse", "atlas-manifest"): [1, 5],
+        ("2026-08-12", "example_mouse", "atlas-manifest"): [1, 5],
     }
-    # requests, bytes_sent, manifest_requests
-    assert country_counts == {("2026-08-12", "US"): [3, 170, 1]}
+    # requests, bytes_sent, manifest_requests (atlas downloads only)
+    assert country_counts == {("2026-08-12", "US"): [5, 180, 1]}
     assert tool_counts == {
-        ("2026-08-12", "brainglobe-atlasapi"): [2, 120, 1],
+        ("2026-08-12", "brainglobe-atlasapi"): [4, 130, 1],
         ("2026-08-12", "pinpoint"): [1, 50, 0],
     }
 
@@ -492,4 +511,53 @@ def test_load_summary_missing_file_is_empty(tmp_path):
         "requests",
         "bytes_sent",
         "manifest_requests",
+    ]
+
+
+def test_run_over_parquet_mirror_matches_local_dir(tmp_path):
+    import gzip
+    import importlib.util
+
+    script = Path(__file__).parents[2] / "scripts" / "sync_logs.py"
+    spec = importlib.util.spec_from_file_location("sync_logs", script)
+    sync_logs = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(sync_logs)
+
+    line = _line(key="atlas/atlases/allen_mouse_25um/3_0/manifest.json")
+    files = {
+        "2026-08-12-00-00-00-AAAA": gzip.compress(f"{line}\n".encode()),
+        "2026-08-13-01-00-00-BBBB": f"{line}\r\n{line}".encode(),
+        "2026-08-14-02-00-00-CCCC": b"\xff\xfe not utf-8\n",
+    }
+    flat = tmp_path / "flat"
+    flat.mkdir()
+    for name, body in files.items():
+        (flat / name).write_bytes(body)
+    mirror = tmp_path / "mirror"
+    sync_logs.write(mirror, sorted(files.items()), batch=2)  # one file per day
+
+    def summary(source, name):
+        run(
+            bucket="",
+            region="us-west-2",
+            local_dir=source,
+            atlas_path=tmp_path / f"{name}_a.parquet",
+            country_path=tmp_path / f"{name}_c.parquet",
+            tool_path=tmp_path / f"{name}_t.parquet",
+            state_path=tmp_path / f"{name}.json",
+            country_lookup=_lookup(),
+        )
+        return load_summary(tmp_path / f"{name}_a.parquet", ATLAS_KEY)
+
+    from_mirror = summary(mirror, "pq")
+    assert from_mirror["requests"].sum() == 3
+    pd.testing.assert_frame_equal(from_mirror, summary(flat, "dir"))
+
+    # The cursor skips whole earlier files and resumes mid-file.
+    keys = sorted(files)
+    assert [k for k, _ in iter_parquet_objects(mirror, keys[0], None)] == (
+        keys[1:]
+    )
+    assert [k for k, _ in iter_parquet_objects(mirror, keys[1], 1)] == [
+        keys[2]
     ]

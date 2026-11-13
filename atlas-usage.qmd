@@ -15,6 +15,7 @@ for what each metric means.
 ```{python}
 # | label: load
 from datetime import datetime
+from itertools import accumulate
 import json
 
 import pandas as pd
@@ -133,9 +134,19 @@ def _bar_figure(labels, keys, metrics, *, title, color, tooltip_labels=None):
     return fig, source
 
 
-def _wire_global(selector, panels, *, ts_source, ts_fig, caption):
+# Recomputes the cumulative chart from whatever the time series now shows.
+CUMSUM_JS = """
+let run = 0;
+cum.data['y'] = ts.data['y'].map((v) => (run += v));
+cum.change.emit();
+"""
+
+
+def _wire_global(selector, panels, *, ts_source, ts_fig, caption, cum_source):
     """One shared ``RadioButtonGroup`` (``selector``) drives every bar
     chart's own bar lengths/axis label *and* the linked time series.
+
+    ``cum_source`` mirrors the time series as a running total.
 
     ``panels`` is ``[(fig, source, metrics, prefix), ...]`` - every panel
     must share the same metric keys/order as ``selector``'s labels. Clicking
@@ -173,10 +184,10 @@ def _wire_global(selector, panels, *, ts_source, ts_fig, caption):
     # unlike the bars, which show a total over the whole window - so it
     # always takes its axis label from daily_unit, never bar_unit.
     daily_units_lists = _by_metric(3)
-    # The reset/total series can differ per panel (e.g. the atlas chart's
-    # "manifest" total is narrower than country/tool/resource's), so the
-    # linked time series always reflects whichever panel triggered it -
-    # on a bare metric switch (no bar selected anywhere) that's panel 0.
+    # The reset/total series can differ per panel (e.g. the atlas chart
+    # only carries atlas downloads), so the linked time series always
+    # reflects whichever panel triggered it - on a bare metric switch (no
+    # bar selected anywhere) that's panel 0.
     total_lists = _by_metric(6)
 
     metric_change = CustomJS(
@@ -193,6 +204,7 @@ def _wire_global(selector, panels, *, ts_source, ts_fig, caption):
             metric_keys=metric_keys,
             metric_labels=metric_labels,
             ts=ts_source,
+            cum=cum_source,
             caption=caption,
             ts_yaxis=ts_fig.yaxis[0],
         ),
@@ -207,6 +219,7 @@ def _wire_global(selector, panels, *, ts_source, ts_fig, caption):
         }
         ts.data['y'] = total_lists[0][metric];
         ts.change.emit();
+        """ + CUMSUM_JS + """
         ts_yaxis.axis_label = daily_units_lists[0][metric];
         caption.text = 'Showing <b>all ' + metric_labels[metric] +
             '</b> &mdash; click a bar below to drill in';
@@ -224,6 +237,7 @@ def _wire_global(selector, panels, *, ts_source, ts_fig, caption):
             args=dict(
                 bar_source=source,
                 ts=ts_source,
+                cum=cum_source,
                 caption=caption,
                 selector=selector,
                 metric_keys=panel_keys,
@@ -253,6 +267,7 @@ def _wire_global(selector, panels, *, ts_source, ts_fig, caption):
                 }
             }
             ts.change.emit();
+            """ + CUMSUM_JS + """
             ts_yaxis.axis_label = units[metric];
             """,
         )
@@ -281,6 +296,9 @@ tools = _read(
     ["date", "tool", "requests", "bytes_sent", "manifest_requests"],
 )
 tools["tool"] = tools["tool"].map(display_tool)
+# example_mouse is an internal test atlas. Country/tool summaries have no
+# atlas dimension, so they still include its traffic.
+usage = usage[usage["atlas"] != "example_mouse"]
 has_data = not usage.empty
 
 state = json.loads(STATE_PATH.read_text()) if STATE_PATH.exists() else {}
@@ -305,29 +323,19 @@ if has_data:
     usage["date"] = pd.to_datetime(usage["date"])
     countries["date"] = pd.to_datetime(countries["date"])
 
-    # The per-atlas views use annotation-set requests only (see intro).
-    annotations = usage[usage["resource"] == "annotation"]
-    # The group-root zarr.json fetch for an annotation store - one per
-    # "open", so a better popularity proxy than raw request counts (which
-    # are skewed by array size and how much of it a client reads). Only
-    # collected from the point this classification was added; see the note
-    # by the table below.
-    annotation_manifests = usage[usage["resource"] == "annotation-manifest"]
+    # Per-atlas popularity counts atlas *downloads*: brainglobe-atlasapi
+    # always fetches an atlas's manifest.json first (and only when it has no
+    # local copy), and that key carries the canonical atlas name.
+    atlas_manifests = usage[usage["resource"] == "atlas-manifest"]
 
     by_atlas = (
-        annotations.groupby("atlas")
-        .agg(requests=("requests", "sum"))
-        .sort_values("requests", ascending=False)
+        atlas_manifests.groupby("atlas")
+        .agg(downloads=("requests", "sum"))
+        .sort_values("downloads", ascending=False)
     )
-    by_atlas["manifest_requests"] = (
-        annotation_manifests.groupby("atlas")["requests"]
-        .sum()
-        .reindex(by_atlas.index, fill_value=0)
-        .astype(int)
-    )
-    # Human-readable name for display; the index stays the raw key derived
-    # by classify_key (used to filter "unclassified" etc).
-    by_atlas["name"] = [display_name(atlas) for atlas in by_atlas.index]
+
+    atlas_table = by_atlas.copy()
+    atlas_table.insert(0, "name", [display_name(k) for k in atlas_table.index])
 
     by_country = (
         countries.groupby("country")["requests"]
@@ -365,8 +373,7 @@ if has_data:
 
     total_requests = int(usage["requests"].sum())
     total_bytes = int(usage["bytes_sent"].sum())
-    annotation_requests = int(annotations["requests"].sum())
-    n_atlases = int((by_atlas.index != "unclassified").sum())
+    n_atlases = len(by_atlas)
     n_countries = int((by_country.index != "??").sum())
     span = f"{by_day.index.min():%d %b %Y} – {by_day.index.max():%d %b %Y}"
     n_days = by_day.shape[0]
@@ -387,31 +394,25 @@ if has_data:
         )
         return {str(col): pivot[col].tolist() for col in pivot.columns}
 
-    atlas_daily = _daily_lookup(annotations, "atlas", "requests")
-    atlas_manifest_daily = _daily_lookup(annotation_manifests, "atlas", "requests")
-
     resource_daily = _daily_lookup(usage, "resource", "requests")
-    # "Manifest requests" per resource *category*: a "<type>-manifest" row
-    # is entirely manifest requests (so its own requests figure, unchanged);
-    # every other row (annotation, packaged-atlas, ...) excludes manifest
-    # fetches by construction (they get their own row), so it's zero there.
+    # Atlas downloads per resource *category*: only the "atlas-manifest"
+    # row (its own requests figure); every other row is zero.
     zero_daily = [0] * len(by_day.index)
     resource_manifest_daily = {
-        str(r): (resource_daily[str(r)] if str(r).endswith("-manifest") else zero_daily)
+        str(r): (resource_daily[str(r)] if r == "atlas-manifest" else zero_daily)
         for r in by_resource.index
     }
     by_resource_manifest = pd.Series(
         {
-            r: (int(by_resource[r]) if str(r).endswith("-manifest") else 0)
+            r: (int(by_resource[r]) if r == "atlas-manifest" else 0)
             for r in by_resource.index
         }
     )
 
     country_daily = _daily_lookup(countries, "country", "requests")
-    # Country/tool have no resource dimension, so "manifest requests" here
-    # means *any* resource type's group-root zarr.json (annotation,
-    # template, ...) - broader than the atlas chart's annotation-only
-    # manifest requests.
+    # Country/tool have no resource dimension, so they carry atlas
+    # downloads (atlas manifest.json fetches, minus example_mouse) as a
+    # manifest_requests column - same total as atlas_manifests.
     country_manifest_daily = _daily_lookup(countries, "country", "manifest_requests")
     by_country_manifest = countries.groupby("country")["manifest_requests"].sum()
 
@@ -423,13 +424,6 @@ if has_data:
     by_tool_manifest = tools.groupby("tool")["manifest_requests"].sum()
 
     total_daily = by_day["requests"].astype(int).tolist()
-    total_manifest_daily = (
-        annotation_manifests.groupby("date")["requests"]
-        .sum()
-        .reindex(by_day.index, fill_value=0)
-        .astype(int)
-        .tolist()
-    )
     total_manifest_all_daily = (
         countries.groupby("date")["manifest_requests"]
         .sum()
@@ -447,7 +441,7 @@ if has_data:
         ("Requests", f"{total_requests:,}"),
         ("Data served", f"{total_bytes / TB:.2f} TB"),
         ("Atlases", f"{n_atlases}"),
-        ("Annotation requests", f"{annotation_requests:,}"),
+        ("Atlas downloads", f"{int(atlas_manifests['requests'].sum()):,}"),
         ("Countries", f"{n_countries}"),
         ("Days covered", f"{n_days}"),
         ("Window", span),
@@ -475,15 +469,18 @@ if has_data:
         print(f"\n*Data last updated: {stamp}*\n")
 ```
 
-## Requests by atlas
+## Downloads by atlas
+
+*Downloads* are fetches of each atlas's `manifest.json`, which the BrainGlobe
+Atlas API downloads first, once per local atlas install.
 
 ```{python}
 # | label: table
 if has_data:
     import itables
 
-    table = by_atlas.reset_index()[["name", "requests", "manifest_requests"]]
-    table.columns = ["Atlas", "Requests", "Manifest requests"]
+    table = atlas_table.reset_index(drop=True)
+    table.columns = ["Atlas", "Downloads"]
     itables.show(
         table,
         classes="display nowrap cell-border",
@@ -505,7 +502,7 @@ if has_data:
 # | label: explorer
 if has_data:
     metric_selector = RadioButtonGroup(
-        labels=["Total requests", "Total manifest requests"], active=0
+        labels=["Total requests", "Total atlas downloads"], active=0
     )
     caption = Div(
         text="Showing <b>all total requests</b> &mdash; click a bar below to drill in",
@@ -533,28 +530,32 @@ if has_data:
     ts_fig.y_range.start = 0
     _style(ts_fig)
 
-    top_atlas = (
-        by_atlas[by_atlas.index != "unclassified"].head(15).sort_values("requests")
+    cum_source = ColumnDataSource(
+        data=dict(x=list(by_day.index), y=list(accumulate(total_daily)))
     )
-    atlas_metrics = [
-        ("requests", "Total requests", "total requests", "requests / day",
-         top_atlas["requests"].tolist(), atlas_daily, total_daily),
-        ("manifest", "Total manifest requests", "total manifest requests", "manifest requests / day",
-         top_atlas["manifest_requests"].tolist(), atlas_manifest_daily, total_manifest_daily),
-    ]
-    atlas_fig, atlas_source = _bar_figure(
-        [display_name(k) for k in top_atlas.index],
-        list(top_atlas.index),
-        atlas_metrics,
-        title="By atlas (top 15)",
-        color=GREEN,
+    cum_fig = figure(
+        x_axis_type="datetime",
+        x_range=ts_fig.x_range,
+        height=280,
+        sizing_mode="stretch_width",
+        tools="hover,reset,xpan,xwheel_zoom",
+        toolbar_location="above",
+        title="Cumulative",
     )
+    cum_fig.line("x", "y", source=cum_source, color=GREEN, line_width=2)
+    cum_fig.hover.tooltips = [("date", "@x{%F}"), ("total", "@y{0,0}")]
+    cum_fig.hover.formatters = {"@x": "datetime"}
+    cum_fig.hover.mode = "vline"
+    cum_fig.yaxis.axis_label = "running total"
+    cum_fig.yaxis.formatter = NumeralTickFormatter(format="0.[0]a")
+    cum_fig.y_range.start = 0
+    _style(cum_fig)
 
     top_country = by_country[by_country.index != "??"].head(15).sort_values()
     country_metrics = [
         ("requests", "Total requests", "total requests", "requests / day",
          top_country.tolist(), country_daily, total_daily),
-        ("manifest", "Total manifest requests", "total manifest requests", "manifest requests / day",
+        ("manifest", "Total atlas downloads", "total atlas downloads", "atlas downloads / day",
          by_country_manifest.reindex(top_country.index, fill_value=0).tolist(),
          country_manifest_daily, total_manifest_all_daily),
     ]
@@ -569,7 +570,7 @@ if has_data:
     resource_metrics = [
         ("requests", "Total requests", "total requests", "requests / day",
          resource_sorted.tolist(), resource_daily, total_daily),
-        ("manifest", "Total manifest requests", "total manifest requests", "manifest requests / day",
+        ("manifest", "Total atlas downloads", "total atlas downloads", "atlas downloads / day",
          by_resource_manifest.reindex(resource_sorted.index, fill_value=0).tolist(),
          resource_manifest_daily, total_manifest_all_daily),
     ]
@@ -583,7 +584,7 @@ if has_data:
     tool_metrics = [
         ("requests", "Total requests", "total requests", "requests / day",
          tool_sorted.tolist(), tool_daily_lookup, total_daily),
-        ("manifest", "Total manifest requests", "total manifest requests", "manifest requests / day",
+        ("manifest", "Total atlas downloads", "total atlas downloads", "atlas downloads / day",
          by_tool_manifest.reindex(tool_sorted.index, fill_value=0).tolist(),
          tool_manifest_daily, total_manifest_all_daily),
     ]
@@ -595,50 +596,43 @@ if has_data:
 
     _wire_global(
         metric_selector,
+        # Panel 0 supplies the time series' totals on a bare metric switch.
         [
-            (atlas_fig, atlas_source, atlas_metrics, "atlas"),
             (country_fig, country_source, country_metrics, "country"),
             (resource_fig, resource_source, resource_metrics, "resource type"),
             (tool_fig, tool_source, tool_metrics, "client tool"),
         ],
         ts_source=ts_source, ts_fig=ts_fig, caption=caption,
+        cum_source=cum_source,
     )
 
-    # "Manifest requests by resource type" is mostly zero with a few echoes
+    # "Atlas downloads by resource type" is mostly zero with a few echoes
     # (see the resource_manifest_daily comment above): every non-"-manifest"
     # row is zero and every "-manifest" row just repeats its own request
     # count, so it adds no information under that metric. Hide the whole
     # panel instead of showing a near-empty, confusing chart - the "row"
     # (not "gridplot") layout below lets it collapse and its neighbour
     # reflow to fill the space, rather than leaving a blank gap.
-    # active index 1 is "Total manifest requests" (see metric_selector above).
+    # active index 1 is "Total atlas downloads" (see metric_selector above).
     metric_selector.js_on_change("active", CustomJS(
         args=dict(fig=resource_fig),
         code="fig.visible = cb_obj.active !== 1;",
     ))
 
-    # The atlas chart still renders all 15 bars (so the metric toggle and
-    # tap-to-drilldown above keep working on the full list) - it's just
-    # clipped to roughly its top 10 by height, with a scrollbar for the rest.
-    atlas_panel = column(
-        atlas_fig,
-        height=300,
-        sizing_mode="stretch_width",
-        min_width=320,
-        styles={"overflow-y": "auto", "border": f"1px solid {GRID}", "border-radius": "4px"},
-    )
-
     # flex-wrap lets each row drop to one chart per line on narrow screens
     # (below ~2 * 320px) instead of squashing both charts to fit side by
-    # side - the min_width above is what makes a chart refuse to shrink
+    # side - _bar_figure's min_width is what makes a chart refuse to shrink
     # past the point where it'd need to wrap.
     row_styles = {"flex-wrap": "wrap"}
     grid = column(
-        row(atlas_panel, country_fig, sizing_mode="stretch_width", styles=row_styles),
+        country_fig,
         row(resource_fig, tool_fig, sizing_mode="stretch_width", styles=row_styles),
         sizing_mode="stretch_width",
     )
-    show(column(metric_selector, caption, ts_fig, grid, sizing_mode="stretch_width"))
+    show(column(
+        metric_selector, caption, ts_fig, cum_fig, grid,
+        sizing_mode="stretch_width",
+    ))
 ```
 
 ```{python}
