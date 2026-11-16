@@ -1,6 +1,7 @@
 include LICENSE
 include README.md
 recursive-include oss_dashboard/templates *.html
+recursive-include oss_dashboard *.json *.yml *.parquet
 exclude .pre-commit-config.yaml
 
 recursive-exclude * __pycache__
