@@ -33,6 +33,13 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      - name: Generate app token
+        id: app-token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.NIU_BOT_CLIENT_ID }}
+          private-key: ${{ secrets.NIU_BOT_PRIVATE_KEY }}
+
       - name: Checkout
         uses: actions/checkout@a5ac7e51b41094c92402da3b24376905380afc29 # v4
 
