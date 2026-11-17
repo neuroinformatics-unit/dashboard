@@ -35,8 +35,6 @@ PEPY_API_KEY=your_pepy_api_key
 ```
 
 The `GRAPHQL_TOKEN` requires the following GitHub scopes:
-- `read:org`
-- `repo`
 - `read:project`
 
 > [!NOTE]
