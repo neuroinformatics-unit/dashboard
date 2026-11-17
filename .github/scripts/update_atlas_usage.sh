@@ -17,4 +17,6 @@ git add oss_dashboard/data/atlas_usage.parquet \
         oss_dashboard/data/atlas_usage_by_tool.parquet \
         oss_dashboard/data/atlas_usage_state.json
 git diff --cached --quiet || git commit -m "Update atlas usage data [skip ci]"
+# main may have moved while this run was fetching data.
+git pull --rebase
 git push
