@@ -7,8 +7,9 @@ from oss_dashboard.constants import MS_PER_DAY
 
 
 def snake_to_title(name: str) -> str:
-    """Convert snake_case to Title Case with spaces."""
-    return name.replace("_", " ").title()
+    """Convert snake_case to Title Case with spaces, preserving acronyms."""
+    words = name.replace("_", " ").split(" ")
+    return " ".join(word[:1].upper() + word[1:] for word in words)
 
 
 def format_data(data_path: str) -> pd.DataFrame:
