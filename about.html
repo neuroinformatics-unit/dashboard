@@ -49,9 +49,9 @@ ul.task-list li input[type="checkbox"] {
 <link href="site_libs/quarto-html/quarto-syntax-highlighting-0d03878fed8da18bf6c52072959b97e8.css" rel="stylesheet" class="quarto-color-scheme-extra" id="quarto-text-highlighting-styles">
 <script src="site_libs/bootstrap/bootstrap.min.js"></script>
 <link href="site_libs/bootstrap/bootstrap-icons.css" rel="stylesheet">
-<link href="site_libs/bootstrap/bootstrap-433952a4edf0a9939923a8a6ffd7ee8a.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
-<link href="site_libs/bootstrap/bootstrap-dark-5aed55db14fcc04d5a60776362daf656.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
-<link href="site_libs/bootstrap/bootstrap-433952a4edf0a9939923a8a6ffd7ee8a.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
+<link href="site_libs/bootstrap/bootstrap-0d6c7773aced80f35fd448131c555023.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme" id="quarto-bootstrap" data-mode="light">
+<link href="site_libs/bootstrap/bootstrap-dark-a639dbc04861ea53181205572676c56a.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme quarto-color-alternate" id="quarto-bootstrap" data-mode="dark">
+<link href="site_libs/bootstrap/bootstrap-0d6c7773aced80f35fd448131c555023.min.css" rel="stylesheet" append-hash="true" class="quarto-color-scheme-extra" id="quarto-bootstrap" data-mode="light">
 <script id="quarto-search-options" type="application/json">{
   "location": "navbar",
   "copy-button": false,
@@ -269,6 +269,10 @@ ul.task-list li input[type="checkbox"] {
 <span class="menu-text">Dashboard</span></a>
   </li>  
   <li class="nav-item">
+    <a class="nav-link" href="./atlas-usage.html"> 
+<span class="menu-text">Atlas usage</span></a>
+  </li>  
+  <li class="nav-item">
     <a class="nav-link active" href="./about.html" aria-current="page"> 
 <span class="menu-text">About</span></a>
   </li>  
@@ -300,6 +304,7 @@ ul.task-list li input[type="checkbox"] {
   <li><a href="#welcome-to-the-open-source-metrics-documentation" id="toc-welcome-to-the-open-source-metrics-documentation" class="nav-link active" data-scroll-target="#welcome-to-the-open-source-metrics-documentation">Welcome to the Open-Source Metrics Documentation</a>
   <ul class="collapse">
   <li><a href="#metrics-and-definitions" id="toc-metrics-and-definitions" class="nav-link" data-scroll-target="#metrics-and-definitions">Metrics and Definitions</a></li>
+  <li><a href="#atlas-usage-metrics-and-definitions" id="toc-atlas-usage-metrics-and-definitions" class="nav-link" data-scroll-target="#atlas-usage-metrics-and-definitions">Atlas Usage Metrics and Definitions</a></li>
   </ul></li>
   </ul>
 </nav>
@@ -345,6 +350,17 @@ ul.task-list li input[type="checkbox"] {
 <p><code>Close Issues Median Age:</code> Median number of days for all issues with Closed status. If the issue age is zero (meaning there are no open issues), we display “N/A”.</p>
 <p><code>Issue Response Median Age:</code> Median response time of issues that has a response. If the issue response age is zero (meaning there are no comments), we display “N/A”. If the first response is by the creator of the issue the comment is not counted.</p>
 <p><code>Issue Response Average Age:</code> Average response time of issues that has a response. If the issue response age is zero (meaning there are no comments), we display “N/A”. If the first response is by the creator of the issue the comment is not counted. Calculation is Issues Total Response Time divide by Total Issues</p>
+</section>
+<section id="atlas-usage-metrics-and-definitions" class="level3">
+<h3 class="anchored" data-anchor-id="atlas-usage-metrics-and-definitions">Atlas Usage Metrics and Definitions</h3>
+<p>The <a href="./atlas-usage.html">Atlas usage</a> page tracks how the public BrainGlobe atlas data is downloaded, based on the atlas bucket’s S3 server access logs.</p>
+<p><code>Requests:</code> A successful download of an atlas file (an HTTP GET that returned the file’s contents). Requests aren’t a 1:1 proxy for “an atlas was downloaded” - large atlases are split into many chunk files, each counted separately, so larger atlases may lead to more requests regardless of how many people actually used them.</p>
+<p><code>Atlas downloads:</code> Fetches of an atlas’s <code>manifest.json</code>. The BrainGlobe Atlas API always downloads this file first, once per local install of an atlas, and its path carries the atlas’s canonical name - so it is the source of truth for which atlas was downloaded, and how often. The per-atlas table and chart use this count. Different resolutions of one atlas are counted together. The internal <code>example_mouse</code> test atlas is excluded.</p>
+<p>Atlas downloads are also the second metric in the country and client-tool charts, so their totals match the per-atlas total.</p>
+<p><code>Data served:</code> Total data transferred, in GB or TB.</p>
+<p><code>Resource type:</code> Which part of an atlas a request was for - the annotation volume, a per-region mesh, a reference/template image, a terminology, a coordinate space, an atlas’s own manifest, or a neuroglancer state file. Atlas popularity is counted from atlas manifest fetches (see Atlas downloads), not annotation requests - not every use of an atlas reads its annotation.</p>
+<p><code>Client tool:</code> The software inferred to have made a request (e.g.&nbsp;<code>brainglobe-atlasapi</code>, <code>neuroglancer</code>, <code>Pinpoint</code>, a browser, or a custom script), based on the request’s <code>Referer</code> and <code>User-Agent</code> headers. This is an inference, not a verified identity: it assumes any request made with the same underlying library the Atlas API uses (<code>s3fs</code>/<code>boto3</code>) came from the Atlas API, so an unrelated script using that library directly would be misattributed to it.</p>
+<p><code>Country:</code> Geolocated from the requester’s IP address. Requests from IPs that can’t be resolved to a country are counted separately rather than dropped or misattributed.</p>
 
 
 </section>
