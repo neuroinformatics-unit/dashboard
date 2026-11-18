@@ -20,4 +20,8 @@ def test_is_stale():
     today = date(2026, 11, 17)
     assert _is_stale(None, today)
     assert not _is_stale({"fetched_at": "2026-11-01"}, today)
-    assert _is_stale({"fetched_at": "2026-10-18"}, today)
+    assert _is_stale({"fetched_at": "2026-10-31"}, today)
+    # Same month number in a different year is still stale
+    assert _is_stale({"fetched_at": "2025-11-17"}, today)
+    # Short month: fetched 1 Feb is stale on 1 Mar despite only 28 days
+    assert _is_stale({"fetched_at": "2026-02-01"}, date(2026, 3, 1))

@@ -2,9 +2,10 @@
 
 Daily download counts come from pypistats (generous rate limit, ~180 days
 of history). The all-time total comes from PePy, which throttles heavily,
-so it is cached on disk and only re-fetched every
-``PEPY_REFRESH_DAYS``. Between refreshes the total is advanced by adding
-the pypistats daily counts after the date the cached total covers.
+so it is cached on disk and only re-fetched once per calendar month
+(matching the monthly CI cache key, which is only saved on the first run
+of each month). Between refreshes the total is advanced by adding the
+pypistats daily counts after the date the cached total covers.
 """
 
 import json
@@ -23,7 +24,6 @@ from oss_dashboard.constants import (
     PEPY_MAX_RETRIES,
     PEPY_RATE_LIMIT_REQUESTS,
     PEPY_RATE_LIMIT_SLEEP_SECONDS,
-    PEPY_REFRESH_DAYS,
     PYPISTATS_MAX_RETRIES,
 )
 from oss_dashboard.fetchers.utils import (
@@ -168,11 +168,11 @@ class _PepyClient:
 
 
 def _is_stale(entry: dict[str, Any] | None, today: date) -> bool:
-    """Return True if a cache entry is missing or due for a refresh."""
+    """Return True if a cache entry is missing or from a previous month."""
     if entry is None:
         return True
     fetched_at = date.fromisoformat(entry["fetched_at"])
-    return (today - fetched_at).days >= PEPY_REFRESH_DAYS
+    return (fetched_at.year, fetched_at.month) != (today.year, today.month)
 
 
 def _current_total(entry: dict[str, Any], daily: dict[str, int]) -> int:
