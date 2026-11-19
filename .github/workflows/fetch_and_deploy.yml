@@ -54,14 +54,14 @@ jobs:
         id: date
         run: echo "DATE=$(date +'%Y-%m')" >> $GITHUB_ENV
 
-      - name: Restore conda downloads cache
+      - name: Restore download caches
         uses: actions/cache@v5
         with:
           path: ~/.dashboard
-          key: data-cache-${{ env.DATE }}
+          key: data-cache-v2-${{ env.DATE }}
           restore-keys: |
+            data-cache-v2-
             data-cache-
-            conda-download-cache-
 
       - name: Install dependencies
         run: |
